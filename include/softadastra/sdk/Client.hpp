@@ -33,15 +33,20 @@
 #include <softadastra/sdk/Value.hpp>
 
 #include <softadastra/store/engine/StoreEngine.hpp>
+
+#include <softadastra/sync/core/SyncConfig.hpp>
+#include <softadastra/sync/core/SyncContext.hpp>
 #include <softadastra/sync/engine/SyncEngine.hpp>
 #include <softadastra/sync/scheduler/SyncScheduler.hpp>
 
+#include <softadastra/transport/backend/TcpTransportBackend.hpp>
 #include <softadastra/transport/core/TransportConfig.hpp>
 #include <softadastra/transport/core/TransportContext.hpp>
 #include <softadastra/transport/engine/TransportEngine.hpp>
 
 #include <softadastra/discovery/DiscoveryOptions.hpp>
 #include <softadastra/discovery/DiscoveryService.hpp>
+
 #include <softadastra/metadata/MetadataOptions.hpp>
 #include <softadastra/metadata/MetadataService.hpp>
 
@@ -55,6 +60,7 @@ namespace softadastra::sdk
   namespace sync_core = softadastra::sync::core;
   namespace sync_scheduler = softadastra::sync::scheduler;
 
+  namespace transport_backend = softadastra::transport::backend;
   namespace transport_core = softadastra::transport::core;
   namespace transport_engine = softadastra::transport::engine;
 
@@ -131,14 +137,21 @@ namespace softadastra::sdk
     Client(const Client &) = delete;
     Client &operator=(const Client &) = delete;
 
+    /**
+     * @brief Moves a client.
+     */
     Client(Client &&) noexcept;
+
+    /**
+     * @brief Move-assigns a client.
+     */
     Client &operator=(Client &&) noexcept;
 
     /**
      * @brief Opens and initializes the SDK client.
      *
-     * This initializes the local store, sync engine, scheduler, and optional
-     * service objects according to ClientOptions.
+     * This initializes the local store, sync context, sync engine, scheduler,
+     * and optional service objects according to ClientOptions.
      *
      * @return Result<void, Error>.
      */
@@ -162,8 +175,8 @@ namespace softadastra::sdk
     /**
      * @brief Stores a value for a key.
      *
-     * The write is applied to the local store and submitted to the sync layer
-     * when sync is available.
+     * The write is submitted to the sync layer. The sync engine applies the
+     * operation to the local store through its SyncContext.
      *
      * @param key SDK key.
      * @param value SDK value.
@@ -205,7 +218,8 @@ namespace softadastra::sdk
     /**
      * @brief Removes a value from the local store.
      *
-     * The deletion is submitted to the sync layer when sync is available.
+     * The deletion is submitted to the sync layer. The sync engine applies the
+     * operation to the local store through its SyncContext.
      *
      * @param key SDK key.
      * @return Result<void, Error>.
@@ -419,19 +433,75 @@ namespace softadastra::sdk
     void build_runtime();
 
   private:
+    /**
+     * @brief SDK options used to configure this client.
+     */
     ClientOptions options_{};
 
+    /**
+     * @brief Local store engine owned by the SDK client.
+     */
     std::unique_ptr<store_engine::StoreEngine> store_{};
+
+    /**
+     * @brief Sync configuration owned by the SDK client.
+     *
+     * SyncEngine stores references through SyncContext, so this object must
+     * outlive SyncContext, SyncEngine, and SyncScheduler.
+     */
+    std::unique_ptr<sync_core::SyncConfig> sync_config_{};
+
+    /**
+     * @brief Sync runtime context owned by the SDK client.
+     *
+     * SyncEngine keeps a reference to this context, so it must outlive the
+     * sync engine.
+     */
+    std::unique_ptr<sync_core::SyncContext> sync_context_{};
+
+    /**
+     * @brief Synchronization engine owned by the SDK client.
+     */
     std::unique_ptr<sync_engine::SyncEngine> sync_{};
+
+    /**
+     * @brief Manual synchronization scheduler owned by the SDK client.
+     */
     std::unique_ptr<sync_scheduler::SyncScheduler> scheduler_{};
 
+    /**
+     * @brief Transport configuration owned by the SDK client.
+     */
     std::unique_ptr<transport_core::TransportConfig> transport_config_{};
+
+    /**
+     * @brief Transport runtime context owned by the SDK client.
+     */
     std::unique_ptr<transport_core::TransportContext> transport_context_{};
+
+    /**
+     * @brief TCP transport backend owned by the SDK client.
+     */
+    std::unique_ptr<transport_backend::TcpTransportBackend> transport_backend_{};
+
+    /**
+     * @brief Transport engine owned by the SDK client.
+     */
     std::unique_ptr<transport_engine::TransportEngine> transport_{};
 
+    /**
+     * @brief Discovery service owned by the SDK client.
+     */
     std::unique_ptr<discovery_api::DiscoveryService> discovery_{};
+
+    /**
+     * @brief Metadata service owned by the SDK client.
+     */
     std::unique_ptr<metadata_api::MetadataService> metadata_{};
 
+    /**
+     * @brief True when the SDK client is open.
+     */
     bool open_{false};
   };
 

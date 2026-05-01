@@ -63,11 +63,25 @@ namespace softadastra::sdk
     std::string store_wal_path{"data/sdk-store.wal"};
 
     /**
+     * @brief Backward-compatible WAL path alias.
+     *
+     * This keeps older SDK examples and documentation readable.
+     */
+    std::string wal_path{"data/sdk-store.wal"};
+
+    /**
      * @brief Enable WAL persistence for the local store.
      *
      * When false, the SDK client uses an in-memory store.
      */
     bool enable_store_wal{true};
+
+    /**
+     * @brief Backward-compatible WAL enable alias.
+     *
+     * This keeps older SDK examples and documentation readable.
+     */
+    bool enable_wal{true};
 
     /**
      * @brief Flush the WAL after every accepted local write.
@@ -135,6 +149,22 @@ namespace softadastra::sdk
     std::uint16_t discovery_port{0};
 
     /**
+     * @brief Backward-compatible discovery broadcast host.
+     *
+     * The current SDK discovery implementation uses the bind address.
+     * This field is kept so older examples can compile.
+     */
+    std::string discovery_broadcast_host{"0.0.0.0"};
+
+    /**
+     * @brief Backward-compatible discovery broadcast port.
+     *
+     * The current SDK discovery implementation uses the bind port.
+     * This field is kept so older examples can compile.
+     */
+    std::uint16_t discovery_broadcast_port{0};
+
+    /**
      * @brief Human-readable node display name.
      */
     std::string display_name{};
@@ -164,6 +194,21 @@ namespace softadastra::sdk
     }
 
     /**
+     * @brief Creates local memory-only client options.
+     *
+     * This is the simplest SDK entry point for examples, tutorials,
+     * and local-only applications.
+     *
+     * @param local_node_id Local node id.
+     * @return ClientOptions.
+     */
+    [[nodiscard]] static ClientOptions local(
+        std::string local_node_id)
+    {
+      return memory_only(std::move(local_node_id));
+    }
+
+    /**
      * @brief Creates durable production-oriented options.
      *
      * @param local_node_id Local node id.
@@ -175,8 +220,10 @@ namespace softadastra::sdk
         std::string wal_path = "data/sdk-store.wal")
     {
       ClientOptions options{std::move(local_node_id)};
-      options.store_wal_path = std::move(wal_path);
+      options.store_wal_path = wal_path;
+      options.wal_path = std::move(wal_path);
       options.enable_store_wal = true;
+      options.enable_wal = true;
       options.auto_flush = true;
       options.initial_store_capacity = 1024;
       options.sync_batch_size = 64;
@@ -184,6 +231,24 @@ namespace softadastra::sdk
       options.require_ack = true;
       options.auto_queue = true;
       return options;
+    }
+
+    /**
+     * @brief Creates persistent WAL-backed options.
+     *
+     * This is a developer-friendly alias for durable().
+     *
+     * @param local_node_id Local node id.
+     * @param wal_path Store WAL path.
+     * @return ClientOptions.
+     */
+    [[nodiscard]] static ClientOptions persistent(
+        std::string local_node_id,
+        std::string wal_path = "data/sdk-store.wal")
+    {
+      return durable(
+          std::move(local_node_id),
+          std::move(wal_path));
     }
 
     /**
@@ -198,8 +263,10 @@ namespace softadastra::sdk
         std::string wal_path = "data/sdk-store.wal")
     {
       ClientOptions options{std::move(local_node_id)};
-      options.store_wal_path = std::move(wal_path);
+      options.store_wal_path = wal_path;
+      options.wal_path = std::move(wal_path);
       options.enable_store_wal = true;
+      options.enable_wal = true;
       options.auto_flush = false;
       options.initial_store_capacity = 1024;
       options.sync_batch_size = 128;
@@ -220,6 +287,7 @@ namespace softadastra::sdk
     {
       ClientOptions options{std::move(local_node_id)};
       options.enable_store_wal = false;
+      options.enable_wal = false;
       options.auto_flush = false;
       options.initial_store_capacity = 1024;
       options.require_ack = false;
@@ -269,8 +337,10 @@ namespace softadastra::sdk
     {
       ClientOptions options = *this;
       options.enable_discovery = true;
-      options.discovery_host = std::move(host);
+      options.discovery_host = host;
+      options.discovery_broadcast_host = std::move(host);
       options.discovery_port = port;
+      options.discovery_broadcast_port = port;
       return options;
     }
 
@@ -304,12 +374,37 @@ namespace softadastra::sdk
     }
 
     /**
+     * @brief Returns the effective store WAL path.
+     *
+     * @return Store WAL path.
+     */
+    [[nodiscard]] const std::string &effective_store_wal_path() const noexcept
+    {
+      if (store_wal_path != "data/sdk-store.wal")
+      {
+        return store_wal_path;
+      }
+
+      return wal_path;
+    }
+
+    /**
+     * @brief Returns true when the store WAL should be enabled.
+     *
+     * @return true if WAL persistence is enabled.
+     */
+    [[nodiscard]] bool effective_enable_store_wal() const noexcept
+    {
+      return enable_store_wal && enable_wal;
+    }
+
+    /**
      * @brief Converts SDK options to StoreConfig.
      */
     [[nodiscard]] softadastra::store::core::StoreConfig
     to_store_config() const
     {
-      if (!enable_store_wal)
+      if (!effective_enable_store_wal())
       {
         auto config = softadastra::store::core::StoreConfig::memory_only();
         config.initial_capacity = initial_store_capacity;
@@ -317,9 +412,10 @@ namespace softadastra::sdk
       }
 
       auto config =
-          softadastra::store::core::StoreConfig::durable(store_wal_path);
+          softadastra::store::core::StoreConfig::durable(
+              effective_store_wal_path());
 
-      config.enable_wal = enable_store_wal;
+      config.enable_wal = effective_enable_store_wal();
       config.auto_flush = auto_flush;
       config.initial_capacity = initial_store_capacity;
 
@@ -400,7 +496,8 @@ namespace softadastra::sdk
         return false;
       }
 
-      if (enable_store_wal && store_wal_path.empty())
+      if (effective_enable_store_wal() &&
+          effective_store_wal_path().empty())
       {
         return false;
       }

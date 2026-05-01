@@ -108,10 +108,7 @@ namespace softadastra::sdk
      * @param key Internal store key.
      * @return SDK key.
      */
-    [[nodiscard]] static Key from_store(const store_types::Key &key)
-    {
-      return Key{key.str()};
-    }
+    [[nodiscard]] static Key from_store(const store_types::Key &key);
 
     /**
      * @brief Returns the key string.
@@ -137,6 +134,8 @@ namespace softadastra::sdk
 
     /**
      * @brief Returns true if the key is empty.
+     *
+     * @return True if the key has no value.
      */
     [[nodiscard]] bool empty() const noexcept
     {
@@ -145,6 +144,8 @@ namespace softadastra::sdk
 
     /**
      * @brief Returns true if the key can be used by the SDK.
+     *
+     * @return True if the key is not empty.
      */
     [[nodiscard]] bool is_valid() const noexcept
     {
@@ -153,6 +154,8 @@ namespace softadastra::sdk
 
     /**
      * @brief Backward-compatible valid alias.
+     *
+     * @return True if the key is valid.
      */
     [[nodiscard]] bool valid() const noexcept
     {
@@ -169,14 +172,17 @@ namespace softadastra::sdk
 
     /**
      * @brief Converts this SDK key to an internal Softadastra Store key.
+     *
+     * @return Internal store key.
      */
-    [[nodiscard]] store_types::Key to_store() const
-    {
-      return store_types::Key{value_};
-    }
+    [[nodiscard]] store_types::Key to_store() const;
 
     /**
      * @brief Compares two keys for equality.
+     *
+     * @param a Left key.
+     * @param b Right key.
+     * @return True if both keys have the same value.
      */
     [[nodiscard]] friend bool operator==(
         const Key &a,
@@ -187,6 +193,10 @@ namespace softadastra::sdk
 
     /**
      * @brief Compares two keys for inequality.
+     *
+     * @param a Left key.
+     * @param b Right key.
+     * @return True if keys are different.
      */
     [[nodiscard]] friend bool operator!=(
         const Key &a,
@@ -197,6 +207,10 @@ namespace softadastra::sdk
 
     /**
      * @brief Orders keys lexicographically.
+     *
+     * @param a Left key.
+     * @param b Right key.
+     * @return True if a is lexicographically smaller than b.
      */
     [[nodiscard]] friend bool operator<(
         const Key &a,

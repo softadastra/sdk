@@ -4,8 +4,10 @@
  * Local node metadata example.
  */
 
+#include <cstddef>
 #include <iostream>
 
+#include <softadastra/metadata/types/CapabilityType.hpp>
 #include <softadastra/sdk.hpp>
 
 int main()
@@ -71,7 +73,7 @@ int main()
             << "\n";
 
   std::cout << "  uptime ms    : "
-            << node.uptime_ms
+            << node.uptime_ms()
             << "\n";
 
   std::cout << "  capabilities : ";
@@ -84,7 +86,9 @@ int main()
   {
     for (std::size_t i = 0; i < node.capabilities.size(); ++i)
     {
-      std::cout << node.capabilities[i];
+      std::cout
+          << softadastra::metadata::types::to_string(
+                 node.capabilities[i]);
 
       if (i + 1 < node.capabilities.size())
       {

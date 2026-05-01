@@ -139,10 +139,7 @@ namespace softadastra::sdk
      * @param value Internal store value.
      * @return SDK value.
      */
-    [[nodiscard]] static Value from_store(const store_types::Value &value)
-    {
-      return Value{value.bytes()};
-    }
+    [[nodiscard]] static Value from_store(const store_types::Value &value);
 
     /**
      * @brief Returns the stored bytes.
@@ -188,6 +185,8 @@ namespace softadastra::sdk
 
     /**
      * @brief Returns true if the value has no bytes.
+     *
+     * @return True if empty.
      */
     [[nodiscard]] bool empty() const noexcept
     {
@@ -196,6 +195,8 @@ namespace softadastra::sdk
 
     /**
      * @brief Returns the number of stored bytes.
+     *
+     * @return Value size in bytes.
      */
     [[nodiscard]] std::size_t size() const noexcept
     {
@@ -224,14 +225,17 @@ namespace softadastra::sdk
 
     /**
      * @brief Converts this SDK value to an internal Softadastra Store value.
+     *
+     * @return Internal store value.
      */
-    [[nodiscard]] store_types::Value to_store() const
-    {
-      return store_types::Value{data_};
-    }
+    [[nodiscard]] store_types::Value to_store() const;
 
     /**
      * @brief Compares two values for equality.
+     *
+     * @param a Left value.
+     * @param b Right value.
+     * @return True if both values contain the same bytes.
      */
     [[nodiscard]] friend bool operator==(
         const Value &a,
@@ -242,6 +246,10 @@ namespace softadastra::sdk
 
     /**
      * @brief Compares two values for inequality.
+     *
+     * @param a Left value.
+     * @param b Right value.
+     * @return True if values are different.
      */
     [[nodiscard]] friend bool operator!=(
         const Value &a,

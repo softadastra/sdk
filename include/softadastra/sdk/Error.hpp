@@ -18,11 +18,10 @@
 
 #include <string>
 #include <string_view>
-#include <utility>
 
 #include <softadastra/core/errors/Error.hpp>
 #include <softadastra/core/errors/ErrorCode.hpp>
-#include <softadastra/core/errors/Severity.hpp>
+#include <softadastra/core/errors/ErrorContext.hpp>
 
 namespace softadastra::sdk
 {
@@ -40,211 +39,263 @@ namespace softadastra::sdk
   {
   public:
     /**
+     * @brief SDK-level error code.
+     *
+     * This enum gives the SDK a stable public error surface while allowing
+     * internal Softadastra modules to evolve independently.
+     */
+    enum class Code
+    {
+      None,
+      Unknown,
+      InvalidArgument,
+      InvalidState,
+      NotFound,
+      AlreadyExists,
+      IoError,
+      StoreError,
+      SyncError,
+      TransportError,
+      DiscoveryError,
+      MetadataError,
+      InternalError
+    };
+
+    /**
      * @brief Creates an empty success-like error.
      */
     Error() = default;
 
     /**
-     * @brief Creates an SDK error from core fields.
+     * @brief Creates an SDK error.
      *
-     * @param code Machine-readable error code.
+     * @param code Machine-readable SDK error code.
      * @param message Developer-facing diagnostic message.
-     * @param severity Error severity.
+     * @param context Optional diagnostic context.
      */
     Error(
-        core_errors::ErrorCode code,
+        Code code,
         std::string message,
-        core_errors::Severity severity = core_errors::Severity::Error)
-        : code_(code),
-          severity_(severity),
-          message_(std::move(message))
-    {
-    }
+        std::string context = {});
 
     /**
-     * @brief Creates an SDK error from a core Softadastra error.
+     * @brief Creates an empty success-like error.
      *
-     * @param error Core Softadastra error.
+     * @return Success-like SDK error.
      */
-    explicit Error(const core_errors::Error &error)
-        : code_(error.code()),
-          severity_(error.severity()),
-          message_(error.message())
-    {
-      if (!error.context().empty())
-      {
-        context_ = error.context().message();
-      }
-    }
+    [[nodiscard]] static Error none();
 
     /**
-     * @brief Creates a generic SDK error.
+     * @brief Creates an SDK error from SDK fields.
      *
+     * @param code Machine-readable SDK error code.
      * @param message Developer-facing diagnostic message.
+     * @param context Optional diagnostic context.
      * @return SDK error.
      */
-    [[nodiscard]] static Error make(std::string message)
-    {
-      return Error{
-          core_errors::ErrorCode::Unknown,
-          std::move(message),
-          core_errors::Severity::Error};
-    }
-
-    /**
-     * @brief Creates an SDK error from a core Softadastra error.
-     *
-     * @param error Core Softadastra error.
-     * @return SDK error.
-     */
-    [[nodiscard]] static Error from_core(const core_errors::Error &error)
-    {
-      return Error{error};
-    }
+    [[nodiscard]] static Error make(
+        Code code,
+        std::string message,
+        std::string context = {});
 
     /**
      * @brief Creates an invalid argument error.
      *
      * @param message Developer-facing diagnostic message.
+     * @param context Optional diagnostic context.
      * @return SDK error.
      */
-    [[nodiscard]] static Error invalid_argument(std::string message)
-    {
-      return Error{
-          core_errors::ErrorCode::InvalidArgument,
-          std::move(message),
-          core_errors::Severity::Error};
-    }
+    [[nodiscard]] static Error invalid_argument(
+        std::string message,
+        std::string context = {});
 
     /**
      * @brief Creates an invalid state error.
      *
      * @param message Developer-facing diagnostic message.
+     * @param context Optional diagnostic context.
      * @return SDK error.
      */
-    [[nodiscard]] static Error invalid_state(std::string message)
-    {
-      return Error{
-          core_errors::ErrorCode::InvalidState,
-          std::move(message),
-          core_errors::Severity::Error};
-    }
+    [[nodiscard]] static Error invalid_state(
+        std::string message,
+        std::string context = {});
 
     /**
      * @brief Creates a not found error.
      *
      * @param message Developer-facing diagnostic message.
+     * @param context Optional diagnostic context.
      * @return SDK error.
      */
-    [[nodiscard]] static Error not_found(std::string message)
-    {
-      return Error{
-          core_errors::ErrorCode::NotFound,
-          std::move(message),
-          core_errors::Severity::Error};
-    }
+    [[nodiscard]] static Error not_found(
+        std::string message,
+        std::string context = {});
 
     /**
-     * @brief Creates an internal error.
+     * @brief Creates an I/O error.
      *
      * @param message Developer-facing diagnostic message.
+     * @param context Optional diagnostic context.
      * @return SDK error.
      */
-    [[nodiscard]] static Error internal(std::string message)
-    {
-      return Error{
-          core_errors::ErrorCode::InternalError,
-          std::move(message),
-          core_errors::Severity::Critical};
-    }
+    [[nodiscard]] static Error io_error(
+        std::string message,
+        std::string context = {});
 
     /**
-     * @brief Returns the machine-readable error code.
+     * @brief Creates a sync error.
+     *
+     * @param message Developer-facing diagnostic message.
+     * @param context Optional diagnostic context.
+     * @return SDK error.
      */
-    [[nodiscard]] core_errors::ErrorCode code() const noexcept
-    {
-      return code_;
-    }
+    [[nodiscard]] static Error sync_error(
+        std::string message,
+        std::string context = {});
 
     /**
-     * @brief Returns the error severity.
+     * @brief Creates a transport error.
+     *
+     * @param message Developer-facing diagnostic message.
+     * @param context Optional diagnostic context.
+     * @return SDK error.
      */
-    [[nodiscard]] core_errors::Severity severity() const noexcept
-    {
-      return severity_;
-    }
+    [[nodiscard]] static Error transport_error(
+        std::string message,
+        std::string context = {});
 
     /**
-     * @brief Returns the developer-facing message.
+     * @brief Creates a discovery error.
+     *
+     * @param message Developer-facing diagnostic message.
+     * @param context Optional diagnostic context.
+     * @return SDK error.
      */
-    [[nodiscard]] const std::string &message() const noexcept
-    {
-      return message_;
-    }
+    [[nodiscard]] static Error discovery_error(
+        std::string message,
+        std::string context = {});
 
     /**
-     * @brief Returns optional diagnostic context.
+     * @brief Creates a metadata error.
+     *
+     * @param message Developer-facing diagnostic message.
+     * @param context Optional diagnostic context.
+     * @return SDK error.
      */
-    [[nodiscard]] const std::string &context() const noexcept
-    {
-      return context_;
-    }
+    [[nodiscard]] static Error metadata_error(
+        std::string message,
+        std::string context = {});
 
     /**
-     * @brief Returns true when diagnostic context is available.
+     * @brief Creates an internal SDK error.
+     *
+     * @param message Developer-facing diagnostic message.
+     * @param context Optional diagnostic context.
+     * @return SDK error.
      */
-    [[nodiscard]] bool has_context() const noexcept
-    {
-      return !context_.empty();
-    }
+    [[nodiscard]] static Error internal_error(
+        std::string message,
+        std::string context = {});
 
     /**
-     * @brief Returns true if this object represents an error.
+     * @brief Creates an SDK error from a core Softadastra error.
+     *
+     * @param error Core Softadastra error.
+     * @return SDK error.
      */
-    [[nodiscard]] bool has_error() const noexcept
-    {
-      return code_ != core_errors::ErrorCode::None;
-    }
-
-    /**
-     * @brief Returns true if this object represents success.
-     */
-    [[nodiscard]] bool ok() const noexcept
-    {
-      return code_ == core_errors::ErrorCode::None;
-    }
-
-    /**
-     * @brief Returns the stable string representation of the error code.
-     */
-    [[nodiscard]] std::string_view code_string() const noexcept
-    {
-      return core_errors::to_string(code_);
-    }
-
-    /**
-     * @brief Returns the stable string representation of the severity.
-     */
-    [[nodiscard]] std::string_view severity_string() const noexcept
-    {
-      return core_errors::to_string(severity_);
-    }
+    [[nodiscard]] static Error from_core(
+        const core_errors::Error &error);
 
     /**
      * @brief Converts the SDK error back to a core Softadastra error.
+     *
+     * @return Core Softadastra error.
      */
-    [[nodiscard]] core_errors::Error to_core() const
-    {
-      return core_errors::Error{
-          code_,
-          severity_,
-          message_,
-          core_errors::ErrorContext{context_}};
-    }
+    [[nodiscard]] core_errors::Error to_core() const;
+
+    /**
+     * @brief Returns the machine-readable SDK error code.
+     *
+     * @return SDK error code.
+     */
+    [[nodiscard]] Code code() const noexcept;
+
+    /**
+     * @brief Returns the developer-facing diagnostic message.
+     *
+     * @return Error message.
+     */
+    [[nodiscard]] const std::string &message() const noexcept;
+
+    /**
+     * @brief Returns optional diagnostic context.
+     *
+     * @return Error context.
+     */
+    [[nodiscard]] const std::string &context() const noexcept;
+
+    /**
+     * @brief Returns true when diagnostic context is available.
+     *
+     * @return True if context is not empty.
+     */
+    [[nodiscard]] bool has_context() const noexcept;
+
+    /**
+     * @brief Returns true if this object represents success.
+     *
+     * @return True if the error code is Code::None.
+     */
+    [[nodiscard]] bool ok() const noexcept;
+
+    /**
+     * @brief Returns true if this object represents an error.
+     *
+     * @return True if the error code is not Code::None.
+     */
+    [[nodiscard]] bool has_error() const noexcept;
+
+    /**
+     * @brief Clears the error and resets it to success.
+     */
+    void clear() noexcept;
+
+    /**
+     * @brief Returns the stable string representation of an SDK error code.
+     *
+     * @param code SDK error code.
+     * @return Stable string representation.
+     */
+    [[nodiscard]] static std::string_view to_string(Code code) noexcept;
+
+    /**
+     * @brief Returns the stable string representation of the current error code.
+     *
+     * @return Stable string representation.
+     */
+    [[nodiscard]] std::string_view code_string() const noexcept;
 
   private:
-    core_errors::ErrorCode code_{core_errors::ErrorCode::None};
-    core_errors::Severity severity_{core_errors::Severity::Error};
+    /**
+     * @brief Converts a core Softadastra error code to an SDK error code.
+     *
+     * @param code Core Softadastra error code.
+     * @return SDK error code.
+     */
+    [[nodiscard]] static Code from_core_code(
+        core_errors::ErrorCode code) noexcept;
+
+    /**
+     * @brief Converts an SDK error code to a core Softadastra error code.
+     *
+     * @param code SDK error code.
+     * @return Core Softadastra error code.
+     */
+    [[nodiscard]] static core_errors::ErrorCode to_core_code(
+        Code code) noexcept;
+
+  private:
+    Code code_{Code::None};
     std::string message_{};
     std::string context_{};
   };

@@ -32,10 +32,13 @@ namespace softadastra::sdk
   Client::Client(Client &&other) noexcept
       : options_(std::move(other.options_)),
         store_(std::move(other.store_)),
+        sync_config_(std::move(other.sync_config_)),
+        sync_context_(std::move(other.sync_context_)),
         sync_(std::move(other.sync_)),
         scheduler_(std::move(other.scheduler_)),
         transport_config_(std::move(other.transport_config_)),
         transport_context_(std::move(other.transport_context_)),
+        transport_backend_(std::move(other.transport_backend_)),
         transport_(std::move(other.transport_)),
         discovery_(std::move(other.discovery_)),
         metadata_(std::move(other.metadata_)),
@@ -52,10 +55,13 @@ namespace softadastra::sdk
 
       options_ = std::move(other.options_);
       store_ = std::move(other.store_);
+      sync_config_ = std::move(other.sync_config_);
+      sync_context_ = std::move(other.sync_context_);
       sync_ = std::move(other.sync_);
       scheduler_ = std::move(other.scheduler_);
       transport_config_ = std::move(other.transport_config_);
       transport_context_ = std::move(other.transport_context_);
+      transport_backend_ = std::move(other.transport_backend_);
       transport_ = std::move(other.transport_);
       discovery_ = std::move(other.discovery_);
       metadata_ = std::move(other.metadata_);
@@ -83,7 +89,7 @@ namespace softadastra::sdk
 
     build_runtime();
 
-    if (!store_ || !sync_ || !scheduler_)
+    if (!store_ || !sync_context_ || !sync_ || !scheduler_)
     {
       return VoidResult::err(
           Error::internal_error(
@@ -104,11 +110,14 @@ namespace softadastra::sdk
     discovery_.reset();
 
     transport_.reset();
+    transport_backend_.reset();
     transport_context_.reset();
     transport_config_.reset();
 
     scheduler_.reset();
     sync_.reset();
+    sync_context_.reset();
+    sync_config_.reset();
     store_.reset();
 
     open_ = false;
@@ -147,15 +156,8 @@ namespace softadastra::sdk
             key.to_store(),
             value.to_store());
 
-    const auto applied = store_->apply(operation);
-
-    if (applied.is_err())
-    {
-      return VoidResult::err(
-          Error::from_core(applied.error()));
-    }
-
-    const auto submitted = sync_->submit_local(operation);
+    const auto submitted =
+        sync_->submit_local_operation(operation);
 
     if (submitted.is_err())
     {
@@ -191,9 +193,9 @@ namespace softadastra::sdk
               "key cannot be empty"));
     }
 
-    const auto *entry = store_->get(key.to_store());
+    const auto entry = store_->get(key.to_store());
 
-    if (entry == nullptr)
+    if (!entry.has_value())
     {
       return ValueResult::err(
           Error::not_found(
@@ -229,15 +231,8 @@ namespace softadastra::sdk
     store_core::Operation operation =
         store_core::Operation::remove(key.to_store());
 
-    const auto applied = store_->apply(operation);
-
-    if (applied.is_err())
-    {
-      return VoidResult::err(
-          Error::from_core(applied.error()));
-    }
-
-    const auto submitted = sync_->submit_local(operation);
+    const auto submitted =
+        sync_->submit_local_operation(operation);
 
     if (submitted.is_err())
     {
@@ -417,7 +412,7 @@ namespace softadastra::sdk
               "invalid peer"));
     }
 
-    if (!transport_->connect(peer.to_transport()))
+    if (!transport_->connect_peer(peer.to_transport()))
     {
       return VoidResult::err(
           Error::transport_error(
@@ -444,7 +439,7 @@ namespace softadastra::sdk
               "invalid peer"));
     }
 
-    if (!transport_->disconnect(peer.to_transport()))
+    if (!transport_->disconnect_peer(peer.to_transport()))
     {
       return VoidResult::err(
           Error::transport_error(
@@ -527,7 +522,7 @@ namespace softadastra::sdk
       return NodeInfoResult::err(metadata_result.error());
     }
 
-    const auto metadata = metadata_->local_metadata();
+    const auto metadata = metadata_->local();
 
     if (!metadata.has_value())
     {
@@ -549,7 +544,7 @@ namespace softadastra::sdk
       return NodeInfoResult::err(metadata_result.error());
     }
 
-    const auto metadata = metadata_->refresh_local_metadata();
+    const auto metadata = metadata_->refresh();
 
     if (!metadata.has_value())
     {
@@ -596,7 +591,7 @@ namespace softadastra::sdk
               "SDK client is not open"));
     }
 
-    if (!store_ || !sync_ || !scheduler_)
+    if (!store_ || !sync_context_ || !sync_ || !scheduler_)
     {
       return VoidResult::err(
           Error::invalid_state(
@@ -680,15 +675,23 @@ namespace softadastra::sdk
   void Client::build_runtime()
   {
     auto store_config = options_.to_store_config();
-    auto sync_config = options_.to_sync_config();
 
     store_ =
         std::make_unique<store_engine::StoreEngine>(
             std::move(store_config));
 
+    sync_config_ =
+        std::make_unique<sync_core::SyncConfig>(
+            options_.to_sync_config());
+
+    sync_context_ =
+        std::make_unique<sync_core::SyncContext>(
+            *store_,
+            *sync_config_);
+
     sync_ =
         std::make_unique<sync_engine::SyncEngine>(
-            std::move(sync_config));
+            *sync_context_);
 
     scheduler_ =
         std::make_unique<sync_scheduler::SyncScheduler>(
@@ -705,21 +708,31 @@ namespace softadastra::sdk
               *transport_config_,
               *sync_);
 
+      transport_backend_ =
+          std::make_unique<transport_backend::TcpTransportBackend>(
+              *transport_config_);
+
       transport_ =
           std::make_unique<transport_engine::TransportEngine>(
-              *transport_context_);
+              *transport_context_,
+              *transport_backend_);
     }
 
-    if (options_.enable_discovery)
+    if (options_.enable_discovery && transport_)
     {
       discovery_ =
           std::make_unique<discovery_api::DiscoveryService>(
-              options_.to_discovery_options());
+              options_.to_discovery_options(),
+              *transport_);
     }
 
-    metadata_ =
-        std::make_unique<metadata_api::MetadataService>(
-            options_.to_metadata_options());
+    if (discovery_)
+    {
+      metadata_ =
+          std::make_unique<metadata_api::MetadataService>(
+              options_.to_metadata_options(),
+              discovery_->engine());
+    }
   }
 
 } // namespace softadastra::sdk
