@@ -1,32 +1,45 @@
-/*
- * StoreConversions.cpp
+/**
+ *
+ *  @file StoreConversions.cpp
+ *  @author Softadastra
+ *
+ *  Copyright 2026, Softadastra.
+ *  All rights reserved.
+ *  https://github.com/softadastra/sdk.git
+ *
+ *  Licensed under the Apache License, Version 2.0.
+ *
+ *  Softadastra C++ SDK
+ *
  */
 
-#include <softadastra/sdk/Key.hpp>
-#include <softadastra/sdk/Value.hpp>
+#include "StoreConversions.hpp"
 
-namespace softadastra::sdk
+namespace softadastra::sdk::internal
 {
-  namespace store_types = softadastra::store::types;
-
-  store_types::Key Key::to_store() const
+  softadastra::store::types::Key to_store_key(
+      const Key &key)
   {
-    return store_types::Key{value_};
+    return softadastra::store::types::Key{key.str()};
   }
 
-  Key Key::from_store(const store_types::Key &key)
+  Key from_store_key(
+      const softadastra::store::types::Key &key)
   {
     return Key{key.str()};
   }
 
-  store_types::Value Value::to_store() const
+  softadastra::store::types::Value to_store_value(
+      const Value &value)
   {
-    return store_types::Value::from_bytes(data_);
+    return softadastra::store::types::Value::from_bytes(
+        value.bytes());
   }
 
-  Value Value::from_store(const store_types::Value &value)
+  Value from_store_value(
+      const softadastra::store::types::Value &value)
   {
     return Value::from_bytes(value.bytes());
   }
 
-} // namespace softadastra::sdk
+} // namespace softadastra::sdk::internal

@@ -1,568 +1,609 @@
 # Metadata
 
-The Softadastra C++ SDK exposes node metadata through `softadastra::sdk::Client`.
+Metadata is the SDK layer that exposes information about the local Softadastra node.
+It gives applications a stable public view of the current node without exposing internal metadata runtime objects.
 
-Metadata gives applications a simple way to inspect the current Softadastra node:
-
-```cpp
-auto info = client.node_info();
-```
-
-It hides the lower-level metadata module and exposes a clean public structure: `softadastra::sdk::NodeInfo`.
-
----
-
-## Goal
-
-Metadata answers one question:
-
-> *Who is this Softadastra node, and what can it do?*
-
-A Softadastra node may expose: node id, display name, hostname, operating system, runtime version, uptime, and supported capabilities.
-
-Useful for: dashboards, CLI status commands, peer diagnostics, discovery announcements, logs, monitoring, and debugging local-first systems.
-
----
-
-## Main SDK types
+The main public SDK type is:
 
 ```cpp
-#include <softadastra/sdk.hpp>
+softadastra::sdk::NodeInfo
 ```
 
-- `softadastra::sdk::Client`
-- `softadastra::sdk::ClientOptions`
-- `softadastra::sdk::NodeInfo`
-- `softadastra::sdk::Result`
-- `softadastra::sdk::Error`
-
----
-
-## Basic metadata flow
-
-```cpp
-#include <iostream>
-#include <softadastra/sdk.hpp>
-
-int main()
-{
-    using namespace softadastra::sdk;
-
-    ClientOptions options = ClientOptions::local("node-metadata");
-
-    options.display_name = "Local Metadata Node";
-    options.version      = "0.1.0";
-
-    Client client{options};
-
-    auto open_result = client.open();
-
-    if (open_result.is_err())
-    {
-        std::cerr << open_result.error().message() << "\n";
-        return 1;
-    }
-
-    auto info_result = client.node_info();
-
-    if (info_result.is_err())
-    {
-        std::cerr << info_result.error().message() << "\n";
-        client.close();
-        return 1;
-    }
-
-    const auto &info = info_result.value();
-
-    std::cout << "node id      : " << info.node_id      << "\n";
-    std::cout << "display name : " << info.display_name << "\n";
-    std::cout << "hostname     : " << info.hostname      << "\n";
-    std::cout << "os           : " << info.os_name       << "\n";
-    std::cout << "version      : " << info.version       << "\n";
-    std::cout << "uptime ms    : " << info.uptime_ms     << "\n";
-
-    client.close();
-
-    return 0;
-}
-```
-
----
-
-## `ClientOptions` fields
-
-```cpp
-ClientOptions options = ClientOptions::local("node-a");
-
-options.display_name = "Node A";
-options.version      = "0.1.0";
-```
-
-Expected fields:
-
-```cpp
-std::string node_id;       // required
-std::string display_name;  // optional (falls back to node_id)
-std::string version;       // optional (SDK provides default)
-```
-
-All client modes support metadata as long as `node_id` is valid:
-
-```cpp
-ClientOptions::memory_only("node-memory");
-ClientOptions::local("node-local");
-ClientOptions::persistent("node-persistent", "data/sdk-store.wal");
-```
-
----
-
-## Reading node metadata
-
-```cpp
-auto result = client.node_info();
-
-if (result.is_ok())
-{
-    const auto &node = result.value();
-
-    std::cout << node.node_id      << "\n";
-    std::cout << node.display_name << "\n";
-    std::cout << node.hostname     << "\n";
-    std::cout << node.os_name      << "\n";
-    std::cout << node.version      << "\n";
-}
-```
-
-`node_info()` returns `Result<NodeInfo, Error>`.
-
----
-
-## Refreshing node metadata
-
-`refresh_node_info()` updates runtime fields such as uptime before returning.
-
-```cpp
-auto result = client.refresh_node_info();
-
-if (result.is_ok())
-{
-    std::cout << "uptime: " << result.value().uptime_ms << "ms\n";
-}
-```
-
-Recommended behavior:
-
-```
-node_info()         →  returns current metadata snapshot
-refresh_node_info() →  refreshes runtime info, returns updated snapshot
-```
-
-Example:
-
-```cpp
-auto before = client.node_info();
-
-std::this_thread::sleep_for(std::chrono::seconds(1));
-
-auto after = client.refresh_node_info();
-
-if (before.is_ok() && after.is_ok())
-{
-    std::cout << "before: " << before.value().uptime_ms << "\n";
-    std::cout << "after:  " << after.value().uptime_ms  << "\n";
-}
-```
-
----
-
-## `NodeInfo` type
-
-Simple public SDK structure.
-
-```cpp
-std::string node_id;
-std::string display_name;
-std::string hostname;
-std::string os_name;
-std::string version;
-
-std::int64_t started_at_ms;
-std::int64_t uptime_ms;
-
-std::vector<std::string> capabilities;
-```
-
-Helpers:
-
-```cpp
-node.is_valid();
-node.valid();
-node.label();           // display_name if set, otherwise node_id
-node.uptime_seconds();
-node.has_capability("sync");
-node.has_capability("transport");
-```
-
-### Full declaration
-
-```cpp
-namespace softadastra::sdk
-{
-    struct NodeInfo
-    {
-        std::string node_id{};
-        std::string display_name{};
-        std::string hostname{};
-        std::string os_name{};
-        std::string version{};
-
-        std::int64_t started_at_ms{0};
-        std::int64_t uptime_ms{0};
-
-        std::vector<std::string> capabilities{};
-
-        [[nodiscard]] bool is_valid() const noexcept
-        {
-            return !node_id.empty()   &&
-                   !hostname.empty()  &&
-                   !os_name.empty()   &&
-                   !version.empty()   &&
-                   started_at_ms > 0;
-        }
-
-        [[nodiscard]] bool valid() const noexcept
-        {
-            return is_valid();
-        }
-
-        [[nodiscard]] const std::string &label() const noexcept
-        {
-            return display_name.empty() ? node_id : display_name;
-        }
-
-        [[nodiscard]] double uptime_seconds() const noexcept
-        {
-            return static_cast<double>(uptime_ms) / 1000.0;
-        }
-
-        [[nodiscard]] bool has_capability(const std::string &value) const
-        {
-            for (const auto &capability : capabilities)
-            {
-                if (capability == value) return true;
-            }
-            return false;
-        }
-
-        void clear()
-        {
-            node_id.clear();
-            display_name.clear();
-            hostname.clear();
-            os_name.clear();
-            version.clear();
-            started_at_ms = 0;
-            uptime_ms     = 0;
-            capabilities.clear();
-        }
-    };
-}
-```
-
----
-
-## Capabilities
-
-Common capabilities:
-
-- `core`, `fs`, `wal`, `store`, `sync`
-- `transport`, `discovery`, `metadata`, `app`, `cli`
-
-```cpp
-auto result = client.node_info();
-
-if (result.is_ok())
-{
-    const auto &node = result.value();
-
-    if (node.has_capability("sync"))
-    {
-        std::cout << "sync is available\n";
-    }
-
-    if (node.has_capability("transport"))
-    {
-        std::cout << "transport is available\n";
-    }
-}
-```
-
----
-
-## Metadata and local store
-
-Metadata identifies the node. The store contains application data. They are independent.
-
-```cpp
-client.put("profile/name", "Ada");   // store
-auto info = client.node_info();      // metadata — no conflict
-```
-
----
-
-## Metadata and sync
-
-The SDK keeps node identity consistent across metadata, sync, transport, and discovery.
-
-```cpp
-ClientOptions options = ClientOptions::persistent("node-sync", "data/sync.wal");
-options.display_name  = "Sync Node";
-```
-
-The sync layer uses `node-sync` as the local node identity.
-
----
-
-## Metadata and transport
-
-```cpp
-ClientOptions options = ClientOptions::local("node-a");
-options.display_name  = "Node A";
-
-options.enable_transport = true;
-options.transport_host   = "127.0.0.1";
-options.transport_port   = 4041;
-```
-
-The SDK can expose the node as `node-a at 127.0.0.1:4041`.
-
----
-
-## Metadata and discovery
-
-Discovery announcements map metadata internally. Public code stays simple:
-
-```cpp
-client.start_discovery();
-auto peers = client.peers();
-```
-
-Later SDK versions can expose richer peer metadata.
-
----
-
-## Metadata disabled behavior
-
-For the first SDK version, metadata is not optional. Every opened client should have local metadata.
-
-```cpp
-auto result = client.node_info();
-// works after client.open() as long as ClientOptions is valid
-```
-
-If the client is closed, `node_info()` returns an error:
-
-```cpp
-Client client;
-
-auto result = client.node_info();
-
-if (result.is_err())
-{
-    std::cout << "client is not open\n";
-}
-```
-
----
-
-## Error handling
-
-```cpp
-auto result = client.node_info();
-
-if (result.is_err())
-{
-    const auto &error = result.error();
-
-    std::cerr << error.code_string()
-              << ": "
-              << error.message()
-              << "\n";
-}
-```
-
-Common metadata errors: `invalid_state`, `invalid_argument`, `metadata_error`, `internal_error`.
-
----
-
-## Recommended SDK metadata API
-
-```cpp
-Result<NodeInfo, Error> node_info() const;
-Result<NodeInfo, Error> refresh_node_info();
-```
-
-That is enough for the first public SDK.
-
----
-
-## What the SDK should hide
-
-Application developers should not need to manually use:
-
-- `softadastra::metadata::core::MetadataConfig`
-- `softadastra::metadata::core::NodeMetadata`
-- `softadastra::metadata::core::NodeIdentity`
-- `softadastra::metadata::core::NodeRuntimeInfo`
-- `softadastra::metadata::core::NodeCapabilities`
-- `softadastra::metadata::engine::MetadataEngine`
-- `softadastra::metadata::MetadataService`
-- `softadastra::metadata::registry::MetadataRegistry`
-
----
-
-## Example: print node metadata
-
-```cpp
-#include <iostream>
-#include <softadastra/sdk.hpp>
-
-int main()
-{
-    using namespace softadastra::sdk;
-
-    ClientOptions options = ClientOptions::local("node-info-demo");
-    options.display_name  = "Node Info Demo";
-    options.version       = "0.1.0";
-
-    Client client{options};
-
-    if (client.open().is_err())
-    {
-        return 1;
-    }
-
-    auto info = client.refresh_node_info();
-
-    if (info.is_err())
-    {
-        std::cerr << info.error().message() << "\n";
-        return 1;
-    }
-
-    const auto &node = info.value();
-
-    std::cout << "Node\n";
-    std::cout << "  id         : " << node.node_id      << "\n";
-    std::cout << "  label      : " << node.label()      << "\n";
-    std::cout << "  hostname   : " << node.hostname      << "\n";
-    std::cout << "  os         : " << node.os_name       << "\n";
-    std::cout << "  version    : " << node.version       << "\n";
-    std::cout << "  started at : " << node.started_at_ms << "\n";
-    std::cout << "  uptime ms  : " << node.uptime_ms     << "\n";
-
-    std::cout << "Capabilities\n";
-
-    for (const auto &capability : node.capabilities)
-    {
-        std::cout << "  - " << capability << "\n";
-    }
-
-    client.close();
-
-    return 0;
-}
-```
-
----
-
-## Example: check runtime capabilities
-
-```cpp
-#include <iostream>
-#include <softadastra/sdk.hpp>
-
-int main()
-{
-    using namespace softadastra::sdk;
-
-    ClientOptions options = ClientOptions::persistent(
-        "node-capabilities",
-        "data/capabilities.wal");
-
-    options.enable_transport = true;
-    options.transport_host   = "127.0.0.1";
-    options.transport_port   = 4041;
-
-    options.enable_discovery = true;
-    options.discovery_host   = "127.0.0.1";
-    options.discovery_port   = 5051;
-
-    Client client{options};
-
-    if (client.open().is_err())
-    {
-        return 1;
-    }
-
-    auto info = client.node_info();
-
-    if (info.is_ok())
-    {
-        const auto &node = info.value();
-
-        if (node.has_capability("store"))     std::cout << "store available\n";
-        if (node.has_capability("sync"))      std::cout << "sync available\n";
-        if (node.has_capability("transport")) std::cout << "transport available\n";
-        if (node.has_capability("discovery")) std::cout << "discovery available\n";
-    }
-
-    client.close();
-
-    return 0;
-}
-```
-
----
-
-## Metadata in dashboards
-
-A dashboard can display: node id, display name, hostname, OS, version, uptime, capabilities, transport status, discovery status, and sync state. The metadata API gives the identity part — sync, transport, and discovery APIs provide the runtime state.
-
----
-
-## Metadata in CLI tools
-
-```cpp
-auto info = client.node_info();
-// format result as a table for softadastra node info / status / peers
-```
-
----
-
-## Design rule
-
-The SDK should expose a public `NodeInfo` object, not the internal `NodeMetadata` object. The public object should be easy to serialize into: JSON, CLI output, dashboard API responses, logs, and diagnostics.
-
----
-
-## Summary
-
-The developer should mostly write:
-
-```cpp
-auto info = client.node_info();
-
-std::cout << info.value().node_id  << "\n";
-std::cout << info.value().hostname << "\n";
-std::cout << info.value().version  << "\n";
-```
-
-The public API stays small:
+The main client methods are:
 
 ```cpp
 client.node_info();
 client.refresh_node_info();
 ```
 
-> That is enough for the first version of `sdk-cpp`.
+## Header
+
+Use the umbrella header:
+
+```cpp
+#include <softadastra/sdk.hpp>
+```
+
+Or include the metadata-related SDK types directly:
+
+```cpp
+#include <softadastra/sdk/Client.hpp>
+#include <softadastra/sdk/ClientOptions.hpp>
+#include <softadastra/sdk/NodeInfo.hpp>
+#include <softadastra/sdk/Error.hpp>
+```
+
+## What metadata provides
+
+Metadata describes the local node.
+
+A `NodeInfo` can contain:
+
+```txt
+node id
+display name
+hostname
+operating system name
+runtime version
+started timestamp
+uptime
+capabilities
+```
+
+This is useful for:
+
+```txt
+debugging
+local node inspection
+peer identity display
+diagnostics
+CLI output
+runtime dashboards
+Converdict reports
+```
+
+## Metadata is initialized by default
+
+Unlike transport and discovery, metadata is not an optional service exposed through `ClientOptions`.
+
+When the SDK client opens successfully, the metadata service is built internally.
+
+```cpp
+Client client{
+    ClientOptions::memory_only("node-1")};
+
+client.open();
+
+const auto info =
+    client.node_info();
+```
+
+## Set metadata options
+
+Use `with_metadata()` to set the display name and version:
+
+```cpp
+ClientOptions options =
+    ClientOptions::memory_only("node-1")
+        .with_metadata("Local Node", "0.1.0");
+```
+
+Then create the client:
+
+```cpp
+Client client{options};
+```
+
+## Read node info
+
+Use `node_info()`:
+
+```cpp
+const auto info =
+    client.node_info();
+
+if (info.is_ok())
+{
+  const auto &node =
+      info.value();
+
+  std::cout << node.node_id() << "\n";
+  std::cout << node.display_name() << "\n";
+  std::cout << node.hostname() << "\n";
+  std::cout << node.os_name() << "\n";
+  std::cout << node.version() << "\n";
+}
+```
+
+## Refresh node info
+
+Use `refresh_node_info()` when you want the SDK to refresh runtime metadata before returning it.
+
+```cpp
+const auto info =
+    client.refresh_node_info();
+```
+
+Example:
+
+```cpp
+if (info.is_ok())
+{
+  std::cout << "node: "
+            << info.value().label()
+            << "\n";
+}
+```
+
+## Complete metadata example
+
+```cpp
+#include <softadastra/sdk.hpp>
+
+#include <iostream>
+
+int main()
+{
+  using namespace softadastra::sdk;
+
+  ClientOptions options =
+      ClientOptions::memory_only("metadata-node")
+          .with_metadata("Metadata Node", "0.1.0");
+
+  Client client{options};
+
+  const auto opened =
+      client.open();
+
+  if (opened.is_err())
+  {
+    std::cerr << opened.error().code_string()
+              << ": "
+              << opened.error().message()
+              << "\n";
+
+    return 1;
+  }
+
+  const auto info =
+      client.refresh_node_info();
+
+  if (info.is_err())
+  {
+    std::cerr << info.error().code_string()
+              << ": "
+              << info.error().message()
+              << "\n";
+
+    client.close();
+
+    return 1;
+  }
+
+  const auto &node =
+      info.value();
+
+  std::cout << "node_id      : "
+            << node.node_id()
+            << "\n";
+
+  std::cout << "display_name : "
+            << node.display_name()
+            << "\n";
+
+  std::cout << "label        : "
+            << node.label()
+            << "\n";
+
+  std::cout << "hostname     : "
+            << node.hostname()
+            << "\n";
+
+  std::cout << "os_name      : "
+            << node.os_name()
+            << "\n";
+
+  std::cout << "version      : "
+            << node.version()
+            << "\n";
+
+  std::cout << "started_at   : "
+            << node.started_at_ms()
+            << " ms\n";
+
+  std::cout << "uptime       : "
+            << node.uptime_ms()
+            << " ms\n";
+
+  std::cout << "capabilities : "
+            << node.capabilities().size()
+            << "\n";
+
+  client.close();
+
+  return 0;
+}
+```
+
+## NodeInfo
+
+`NodeInfo` is the public SDK representation of local node metadata.
+
+```cpp
+NodeInfo info{
+    "node-1",
+    "Local Node",
+    "localhost",
+    "linux",
+    "0.1.0"};
+```
+
+## Node id
+
+The node id is the logical identifier of the local node.
+
+```cpp
+node.node_id();
+```
+
+It comes from `ClientOptions`:
+
+```cpp
+ClientOptions::memory_only("node-1");
+```
+
+or:
+
+```cpp
+ClientOptions::persistent(
+    "node-1",
+    "data/sdk-store.wal");
+```
+
+## Display name
+
+The display name is a human-readable node label.
+
+```cpp
+node.display_name();
+```
+
+Set it with:
+
+```cpp
+ClientOptions options =
+    ClientOptions::memory_only("node-1")
+        .with_metadata("My Laptop", "0.1.0");
+```
+
+## Label
+
+`label()` returns the best display label.
+
+```cpp
+node.label();
+```
+
+If `display_name()` is not empty, `label()` returns it.
+
+If `display_name()` is empty, `label()` returns `node_id()`.
+
+```cpp
+NodeInfo info{
+    "node-1",
+    "",
+    "localhost",
+    "linux",
+    "0.1.0"};
+
+info.label(); // "node-1"
+```
+
+## Hostname
+
+`hostname()` returns the local machine hostname reported by the metadata layer.
+
+```cpp
+node.hostname();
+```
+
+This is useful for diagnostics and CLI output.
+
+## OS name
+
+`os_name()` returns the operating system name reported by the metadata layer.
+
+```cpp
+node.os_name();
+```
+
+Example values can include:
+
+```txt
+linux
+windows
+macos
+unknown
+```
+
+The exact value depends on the runtime implementation.
+
+## Version
+
+`version()` returns the runtime or product version exposed through metadata.
+
+```cpp
+node.version();
+```
+
+Set it with:
+
+```cpp
+ClientOptions options =
+    ClientOptions::memory_only("node-1")
+        .with_metadata("Local Node", "0.1.0");
+```
+
+## Started timestamp
+
+`started_at_ms()` returns the node start timestamp in milliseconds.
+
+```cpp
+node.started_at_ms();
+```
+
+This value is useful for diagnostics and reporting.
+
+## Uptime
+
+`uptime_ms()` returns the current node uptime in milliseconds.
+
+```cpp
+node.uptime_ms();
+```
+
+Use it to show how long the local node has been running.
+
+## Capabilities
+
+Capabilities describe what the node can do.
+
+```cpp
+node.capabilities();
+```
+
+Check a capability:
+
+```cpp
+if (node.has_capability("store"))
+{
+  // node has store capability
+}
+```
+
+Add a capability manually when building `NodeInfo` values in tests or reports:
+
+```cpp
+NodeInfo info;
+
+info.add_capability("store");
+info.add_capability("sync");
+```
+
+Set all capabilities:
+
+```cpp
+info.set_capabilities({"store", "sync", "transport"});
+```
+
+## NodeInfo setters
+
+`NodeInfo` can be built manually for tests, examples, and report generation.
+
+```cpp
+NodeInfo info;
+
+info.set_node_id("node-1");
+info.set_display_name("Local Node");
+info.set_hostname("localhost");
+info.set_os_name("linux");
+info.set_version("0.1.0");
+info.set_started_at_ms(1000);
+info.set_uptime_ms(2000);
+info.add_capability("store");
+```
+
+## Valid node info
+
+A valid `NodeInfo` must have:
+
+```txt
+non-empty node id
+non-empty hostname
+non-empty OS name
+non-empty version
+```
+
+Check validity:
+
+```cpp
+if (info.is_valid())
+{
+  // usable node info
+}
+```
+
+Backward-compatible alias:
+
+```cpp
+info.valid();
+```
+
+## Clear node info
+
+```cpp
+info.clear();
+```
+
+After clearing, the object becomes invalid.
+
+```cpp
+NodeInfo info{
+    "node-1",
+    "Local Node",
+    "localhost",
+    "linux",
+    "0.1.0"};
+
+info.clear();
+
+info.is_valid(); // false
+```
+
+## Closed client behavior
+
+Metadata operations require an open client.
+
+```cpp
+Client client{
+    ClientOptions::memory_only("node-1")};
+
+const auto info =
+    client.node_info();
+
+if (info.is_err())
+{
+  // Error::Code::InvalidState
+}
+```
+
+The same rule applies to:
+
+```cpp
+client.refresh_node_info();
+```
+
+## Metadata and local-first behavior
+
+Metadata is not required for local writes, but it helps identify the local runtime.
+
+This works because the store is local-first:
+
+```cpp
+client.put("key", "value");
+```
+
+Metadata adds context around that node:
+
+```txt
+which node accepted the write?
+what machine was it?
+what runtime version was running?
+what capabilities were available?
+```
+
+For Converdict, this is especially useful because reports should identify the node that executed a scenario.
+
+## Metadata and Converdict
+
+Converdict can use SDK metadata to enrich reports.
+
+Example report fields:
+
+```txt
+node_id
+display_name
+hostname
+os_name
+version
+started_at_ms
+uptime_ms
+capabilities
+```
+
+This allows a Converdict run to explain not only what happened, but also where it happened.
+
+## Error behavior
+
+Common metadata errors:
+
+| Situation                | Error code                   |
+| ------------------------ | ---------------------------- |
+| Client is closed         | `Error::Code::InvalidState`  |
+| Metadata service missing | `Error::Code::MetadataError` |
+| Metadata refresh failed  | `Error::Code::MetadataError` |
+| Runtime is incomplete    | `Error::Code::InternalError` |
+
+Example:
+
+```cpp
+const auto info =
+    client.refresh_node_info();
+
+if (info.is_err())
+{
+  std::cerr << info.error().code_string()
+            << ": "
+            << info.error().message()
+            << "\n";
+}
+```
+
+## Recommended pattern
+
+```cpp
+#include <softadastra/sdk.hpp>
+
+#include <iostream>
+
+int main()
+{
+  using namespace softadastra::sdk;
+
+  ClientOptions options =
+      ClientOptions::persistent(
+          "node-1",
+          "data/sdk-store.wal")
+          .with_metadata("Local Node", "0.1.0");
+
+  Client client{options};
+
+  const auto opened =
+      client.open();
+
+  if (opened.is_err())
+  {
+    return 1;
+  }
+
+  const auto info =
+      client.refresh_node_info();
+
+  if (info.is_ok())
+  {
+    const auto &node =
+        info.value();
+
+    std::cout << node.label()
+              << " running on "
+              << node.os_name()
+              << "\n";
+  }
+
+  client.close();
+
+  return 0;
+}
+```
+
+## Summary
+
+Metadata gives the SDK a stable public view of the local node.
+
+```txt
+node_info()          -> read current metadata
+refresh_node_info()  -> refresh and read metadata
+NodeInfo             -> public node metadata object
+```
+
+Use metadata when you need diagnostics, reports, runtime display, node identity, or Converdict scenario context.

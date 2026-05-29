@@ -1,11 +1,11 @@
 /**
  *
  *  @file NodeInfo.hpp
- *  @author Gaspard Kirira
+ *  @author Softadastra
  *
  *  Copyright 2026, Softadastra.
  *  All rights reserved.
- *  https://github.com/softadastra/sdk-cpp
+ *  https://github.com/softadastra/sdk.git
  *
  *  Licensed under the Apache License, Version 2.0.
  *
@@ -18,239 +18,258 @@
 
 #include <cstdint>
 #include <string>
-#include <utility>
 #include <vector>
-
-#include <softadastra/core/time/Duration.hpp>
-#include <softadastra/core/time/Timestamp.hpp>
-#include <softadastra/metadata/core/NodeMetadata.hpp>
-#include <softadastra/metadata/types/CapabilityType.hpp>
 
 namespace softadastra::sdk
 {
-  namespace core_time = softadastra::core::time;
-  namespace metadata_core = softadastra::metadata::core;
-  namespace metadata_types = softadastra::metadata::types;
-
   /**
    * @brief Public SDK node information.
    *
-   * NodeInfo exposes a simplified view of a Softadastra node.
+   * NodeInfo exposes a stable developer-facing view of a Softadastra node.
    *
-   * It is built from the metadata module but hides internal metadata objects
-   * from SDK users.
+   * It is intentionally independent from the internal metadata module. The SDK
+   * converts internal metadata objects to this public representation before
+   * returning them to users.
    */
-  struct NodeInfo
+  class NodeInfo
   {
-    /**
-     * @brief Logical node identifier.
-     */
-    std::string node_id{};
-
-    /**
-     * @brief Human-readable node name.
-     */
-    std::string display_name{};
-
-    /**
-     * @brief Local hostname.
-     */
-    std::string hostname{};
-
-    /**
-     * @brief Operating system name.
-     */
-    std::string os_name{};
-
-    /**
-     * @brief Runtime or product version.
-     */
-    std::string version{};
-
-    /**
-     * @brief Node start timestamp.
-     */
-    core_time::Timestamp started_at{};
-
-    /**
-     * @brief Current uptime.
-     */
-    core_time::Duration uptime{};
-
-    /**
-     * @brief Declared node capabilities.
-     */
-    std::vector<metadata_types::CapabilityType> capabilities{};
-
+  public:
     /**
      * @brief Creates an empty invalid node info object.
      */
     NodeInfo() = default;
 
     /**
-     * @brief Creates node info from explicit fields.
+     * @brief Creates node information.
      *
-     * @param local_node_id Logical node id.
-     * @param local_display_name Human-readable node name.
-     * @param local_hostname Hostname.
-     * @param local_os_name Operating system name.
-     * @param local_version Runtime or product version.
+     * @param node_id Logical node identifier.
+     * @param display_name Human-readable node name.
+     * @param hostname Local hostname.
+     * @param os_name Operating system name.
+     * @param version Runtime or product version.
      */
     NodeInfo(
-        std::string local_node_id,
-        std::string local_display_name,
-        std::string local_hostname,
-        std::string local_os_name,
-        std::string local_version)
-        : node_id(std::move(local_node_id)),
-          display_name(std::move(local_display_name)),
-          hostname(std::move(local_hostname)),
-          os_name(std::move(local_os_name)),
-          version(std::move(local_version)),
-          started_at(core_time::Timestamp::now())
-    {
-      if (display_name.empty())
-      {
-        display_name = node_id;
-      }
-    }
+        std::string node_id,
+        std::string display_name,
+        std::string hostname,
+        std::string os_name,
+        std::string version);
 
     /**
-     * @brief Creates SDK node info from metadata module node metadata.
+     * @brief Returns the logical node identifier.
      *
-     * @param metadata Internal node metadata.
-     * @return SDK node info.
+     * @return Node id.
      */
-    [[nodiscard]] static NodeInfo from_metadata(
-        const metadata_core::NodeMetadata &metadata)
-    {
-      NodeInfo info;
-
-      info.node_id = metadata.identity.node_id;
-      info.display_name = metadata.identity.display_name;
-      info.hostname = metadata.runtime.hostname;
-      info.os_name = metadata.runtime.os_name;
-      info.version = metadata.runtime.version;
-      info.started_at = metadata.runtime.started_at;
-      info.uptime = metadata.runtime.uptime;
-      info.capabilities = metadata.capabilities.values;
-
-      if (info.display_name.empty())
-      {
-        info.display_name = info.node_id;
-      }
-
-      return info;
-    }
+    [[nodiscard]] const std::string &node_id() const noexcept;
 
     /**
-     * @brief Converts SDK node info to metadata module node metadata.
+     * @brief Returns the human-readable node name.
      *
-     * @return Internal node metadata.
+     * @return Display name.
      */
-    [[nodiscard]] metadata_core::NodeMetadata to_metadata() const
-    {
-      metadata_core::NodeCapabilities node_capabilities;
-      node_capabilities.values = capabilities;
+    [[nodiscard]] const std::string &display_name() const noexcept;
 
-      return metadata_core::NodeMetadata{
-          metadata_core::NodeIdentity{
-              node_id,
-              display_name.empty() ? node_id : display_name},
-          metadata_core::NodeRuntimeInfo{
-              hostname,
-              os_name,
-              version},
-          node_capabilities};
-    }
+    /**
+     * @brief Returns the local hostname.
+     *
+     * @return Hostname.
+     */
+    [[nodiscard]] const std::string &hostname() const noexcept;
+
+    /**
+     * @brief Returns the operating system name.
+     *
+     * @return Operating system name.
+     */
+    [[nodiscard]] const std::string &os_name() const noexcept;
+
+    /**
+     * @brief Returns the runtime or product version.
+     *
+     * @return Version string.
+     */
+    [[nodiscard]] const std::string &version() const noexcept;
+
+    /**
+     * @brief Returns the timestamp at which the node started.
+     *
+     * The value is expressed in milliseconds since the Unix epoch.
+     *
+     * @return Start timestamp in milliseconds.
+     */
+    [[nodiscard]] std::int64_t started_at_ms() const noexcept;
+
+    /**
+     * @brief Returns the node uptime.
+     *
+     * The value is expressed in milliseconds.
+     *
+     * @return Uptime in milliseconds.
+     */
+    [[nodiscard]] std::int64_t uptime_ms() const noexcept;
+
+    /**
+     * @brief Returns the list of public capability names.
+     *
+     * @return Capability names.
+     */
+    [[nodiscard]] const std::vector<std::string> &capabilities() const noexcept;
+
+    /**
+     * @brief Sets the logical node identifier.
+     *
+     * @param value New node id.
+     */
+    void set_node_id(std::string value);
+
+    /**
+     * @brief Sets the human-readable node name.
+     *
+     * @param value New display name.
+     */
+    void set_display_name(std::string value);
+
+    /**
+     * @brief Sets the local hostname.
+     *
+     * @param value New hostname.
+     */
+    void set_hostname(std::string value);
+
+    /**
+     * @brief Sets the operating system name.
+     *
+     * @param value New operating system name.
+     */
+    void set_os_name(std::string value);
+
+    /**
+     * @brief Sets the runtime or product version.
+     *
+     * @param value New version.
+     */
+    void set_version(std::string value);
+
+    /**
+     * @brief Sets the node start timestamp.
+     *
+     * The value must be expressed in milliseconds since the Unix epoch.
+     *
+     * @param value Start timestamp in milliseconds.
+     */
+    void set_started_at_ms(std::int64_t value) noexcept;
+
+    /**
+     * @brief Sets the node uptime.
+     *
+     * The value must be expressed in milliseconds.
+     *
+     * @param value Uptime in milliseconds.
+     */
+    void set_uptime_ms(std::int64_t value) noexcept;
+
+    /**
+     * @brief Sets public capability names.
+     *
+     * @param values Capability names.
+     */
+    void set_capabilities(std::vector<std::string> values);
+
+    /**
+     * @brief Adds one public capability name.
+     *
+     * Empty capability names are ignored.
+     *
+     * @param value Capability name.
+     */
+    void add_capability(std::string value);
 
     /**
      * @brief Returns the best display label.
      *
-     * @return display_name when present, otherwise node_id.
-     */
-    [[nodiscard]] const std::string &label() const noexcept
-    {
-      return display_name.empty() ? node_id : display_name;
-    }
-
-    /**
-     * @brief Returns true if a capability is present.
+     * The display name is preferred. If it is empty, the node id is returned.
      *
-     * @param capability Capability to search.
-     * @return true when capability is declared.
+     * @return Display label.
      */
-    [[nodiscard]] bool has_capability(
-        metadata_types::CapabilityType capability) const noexcept
-    {
-      for (const auto value : capabilities)
-      {
-        if (value == capability)
-        {
-          return true;
-        }
-      }
+    [[nodiscard]] const std::string &label() const noexcept;
 
-      return false;
+    /**
+     * @brief Returns true if the node has a capability.
+     *
+     * @param value Capability name.
+     * @return true if the capability exists.
+     */
+    [[nodiscard]] bool has_capability(const std::string &value) const noexcept;
+
+    /**
+     * @brief Returns true if the node info can be used by SDK users.
+     *
+     * A valid NodeInfo must contain:
+     * - node id
+     * - hostname
+     * - operating system name
+     * - version
+     *
+     * @return true if the node info is valid.
+     */
+    [[nodiscard]] bool is_valid() const noexcept;
+
+    /**
+     * @brief Backward-compatible alias for is_valid().
+     *
+     * @return true if the node info is valid.
+     */
+    [[nodiscard]] bool valid() const noexcept;
+
+    /**
+     * @brief Clears all node information.
+     */
+    void clear() noexcept;
+
+    /**
+     * @brief Compares two node info objects for equality.
+     *
+     * @param left Left node info.
+     * @param right Right node info.
+     * @return true if both objects contain the same values.
+     */
+    [[nodiscard]] friend bool operator==(
+        const NodeInfo &left,
+        const NodeInfo &right) noexcept
+    {
+      return left.node_id_ == right.node_id_ &&
+             left.display_name_ == right.display_name_ &&
+             left.hostname_ == right.hostname_ &&
+             left.os_name_ == right.os_name_ &&
+             left.version_ == right.version_ &&
+             left.started_at_ms_ == right.started_at_ms_ &&
+             left.uptime_ms_ == right.uptime_ms_ &&
+             left.capabilities_ == right.capabilities_;
     }
 
     /**
-     * @brief Returns true if foundation runtime capabilities are present.
+     * @brief Compares two node info objects for inequality.
+     *
+     * @param left Left node info.
+     * @param right Right node info.
+     * @return true if the objects are different.
      */
-    [[nodiscard]] bool has_foundation_capabilities() const noexcept
+    [[nodiscard]] friend bool operator!=(
+        const NodeInfo &left,
+        const NodeInfo &right) noexcept
     {
-      for (const auto value : capabilities)
-      {
-        if (metadata_types::is_foundation(value))
-        {
-          return true;
-        }
-      }
-
-      return false;
+      return !(left == right);
     }
 
-    /**
-     * @brief Returns uptime in milliseconds.
-     */
-    [[nodiscard]] core_time::Duration::rep uptime_ms() const noexcept
-    {
-      return uptime.millis();
-    }
-
-    /**
-     * @brief Returns true if node info is usable.
-     */
-    [[nodiscard]] bool is_valid() const noexcept
-    {
-      return !node_id.empty() &&
-             !hostname.empty() &&
-             !os_name.empty() &&
-             !version.empty();
-    }
-
-    /**
-     * @brief Backward-compatible valid alias.
-     */
-    [[nodiscard]] bool valid() const noexcept
-    {
-      return is_valid();
-    }
-
-    /**
-     * @brief Clears the node info.
-     */
-    void clear() noexcept
-    {
-      node_id.clear();
-      display_name.clear();
-      hostname.clear();
-      os_name.clear();
-      version.clear();
-      started_at = core_time::Timestamp{};
-      uptime = core_time::Duration{};
-      capabilities.clear();
-    }
+  private:
+    std::string node_id_{};
+    std::string display_name_{};
+    std::string hostname_{};
+    std::string os_name_{};
+    std::string version_{};
+    std::int64_t started_at_ms_{0};
+    std::int64_t uptime_ms_{0};
+    std::vector<std::string> capabilities_{};
   };
 
 } // namespace softadastra::sdk

@@ -1,11 +1,11 @@
 /**
  *
  *  @file Value.hpp
- *  @author Gaspard Kirira
+ *  @author Softadastra
  *
  *  Copyright 2026, Softadastra.
  *  All rights reserved.
- *  https://github.com/softadastra/sdk-cpp
+ *  https://github.com/softadastra/sdk.git
  *
  *  Licensed under the Apache License, Version 2.0.
  *
@@ -21,33 +21,27 @@
 #include <span>
 #include <string>
 #include <string_view>
-#include <utility>
 #include <vector>
-
-#include <softadastra/store/types/Value.hpp>
 
 namespace softadastra::sdk
 {
-  namespace store_types = softadastra::store::types;
-
   /**
    * @brief Public SDK value type.
    *
-   * Value stores binary-safe data exposed by the SDK client.
+   * Value represents binary-safe data stored through the Softadastra SDK
+   * client.
    *
-   * It is intentionally a small wrapper over bytes:
-   * - strings are stored as raw bytes
-   * - binary payloads are supported
-   * - empty values are allowed
+   * The SDK does not interpret the content of a value. Text, JSON, binary
+   * payloads, metadata, and application-specific formats are all stored as raw
+   * bytes.
    *
-   * The SDK does not interpret the content. Higher-level applications decide
-   * whether the bytes represent text, JSON, files, metadata, or another format.
+   * Empty values are valid.
    */
   class Value
   {
   public:
     /**
-     * @brief Internal byte container type.
+     * @brief Byte container used by the SDK value.
      */
     using Container = std::vector<std::uint8_t>;
 
@@ -57,99 +51,70 @@ namespace softadastra::sdk
     Value() = default;
 
     /**
-     * @brief Creates a value from bytes.
+     * @brief Creates a value from a byte container.
      *
-     * @param data Binary payload.
+     * @param bytes Value bytes.
      */
-    explicit Value(Container data)
-        : data_(std::move(data))
-    {
-    }
+    explicit Value(Container bytes);
 
     /**
      * @brief Creates a value from a byte span.
      *
-     * @param data Binary payload.
+     * @param bytes Value bytes.
      */
-    explicit Value(std::span<const std::uint8_t> data)
-        : data_(data.begin(), data.end())
-    {
-    }
+    explicit Value(std::span<const std::uint8_t> bytes);
 
     /**
      * @brief Creates a value from a string view.
      *
-     * The string is stored as raw bytes.
+     * The string content is copied as raw bytes.
      *
-     * @param data Text or binary-compatible payload.
+     * @param text Text payload.
      */
-    explicit Value(std::string_view data)
-        : data_(data.begin(), data.end())
-    {
-    }
+    explicit Value(std::string_view text);
 
     /**
      * @brief Creates a value from a C string.
      *
-     * Null pointers are converted to an empty value.
+     * A null pointer is converted to an empty value.
      *
-     * @param data Text payload.
+     * @param text Text payload.
      */
-    explicit Value(const char *data)
-        : Value(data == nullptr ? std::string_view{} : std::string_view{data})
-    {
-    }
+    explicit Value(const char *text);
 
     /**
-     * @brief Creates a value from bytes.
+     * @brief Creates a value from a byte container.
      *
-     * @param data Binary payload.
+     * @param bytes Value bytes.
      * @return SDK value.
      */
-    [[nodiscard]] static Value from_bytes(Container data)
-    {
-      return Value{std::move(data)};
-    }
+    [[nodiscard]] static Value from_bytes(Container bytes);
 
     /**
      * @brief Creates a value from a byte span.
      *
-     * @param data Binary payload.
+     * @param bytes Value bytes.
      * @return SDK value.
      */
-    [[nodiscard]] static Value from_span(std::span<const std::uint8_t> data)
-    {
-      return Value{data};
-    }
+    [[nodiscard]] static Value from_span(
+        std::span<const std::uint8_t> bytes);
 
     /**
      * @brief Creates a value from text.
      *
-     * @param data Text payload.
-     * @return SDK value.
-     */
-    [[nodiscard]] static Value from_string(std::string_view data)
-    {
-      return Value{data};
-    }
-
-    /**
-     * @brief Creates a value from an internal Softadastra Store value.
+     * The text is copied as raw bytes. No UTF-8 validation is performed.
      *
-     * @param value Internal store value.
+     * @param text Text payload.
      * @return SDK value.
      */
-    [[nodiscard]] static Value from_store(const store_types::Value &value);
+    [[nodiscard]] static Value from_string(std::string_view text);
 
     /**
      * @brief Returns the stored bytes.
      *
      * @return Read-only byte container.
      */
-    [[nodiscard]] const Container &bytes() const noexcept
-    {
-      return data_;
-    }
+    [[nodiscard]] const Container &bytes() const noexcept;
 
     /**
      * @brief Returns the stored bytes.
@@ -158,104 +123,77 @@ namespace softadastra::sdk
      *
      * @return Read-only byte container.
      */
-    [[nodiscard]] const Container &data() const noexcept
-    {
-      return data_;
-    }
+    [[nodiscard]] const Container &data() const noexcept;
 
     /**
      * @brief Returns the stored bytes as a mutable container.
      *
      * @return Mutable byte container.
      */
-    [[nodiscard]] Container &data() noexcept
-    {
-      return data_;
-    }
+    [[nodiscard]] Container &data() noexcept;
 
     /**
-     * @brief Returns a byte span over the stored data.
+     * @brief Returns a read-only byte span over the stored data.
      *
      * @return Read-only byte span.
      */
-    [[nodiscard]] std::span<const std::uint8_t> span() const noexcept
-    {
-      return std::span<const std::uint8_t>{data_.data(), data_.size()};
-    }
+    [[nodiscard]] std::span<const std::uint8_t> span() const noexcept;
 
     /**
      * @brief Returns true if the value has no bytes.
      *
-     * @return True if empty.
+     * @return true if the value is empty.
      */
-    [[nodiscard]] bool empty() const noexcept
-    {
-      return data_.empty();
-    }
+    [[nodiscard]] bool empty() const noexcept;
 
     /**
      * @brief Returns the number of stored bytes.
      *
      * @return Value size in bytes.
      */
-    [[nodiscard]] std::size_t size() const noexcept
-    {
-      return data_.size();
-    }
+    [[nodiscard]] std::size_t size() const noexcept;
 
     /**
      * @brief Clears the value.
      */
-    void clear() noexcept
-    {
-      data_.clear();
-    }
+    void clear() noexcept;
 
     /**
-     * @brief Converts the value bytes to a string.
+     * @brief Converts the stored bytes to a string.
      *
-     * This does not validate UTF-8.
+     * This function does not validate UTF-8. It simply builds a std::string
+     * from the stored bytes.
      *
-     * @return String built from the stored bytes.
+     * @return String created from the stored bytes.
      */
-    [[nodiscard]] std::string to_string() const
-    {
-      return std::string{data_.begin(), data_.end()};
-    }
-
-    /**
-     * @brief Converts this SDK value to an internal Softadastra Store value.
-     *
-     * @return Internal store value.
-     */
-    [[nodiscard]] store_types::Value to_store() const;
+    [[nodiscard]] std::string to_string() const;
 
     /**
      * @brief Compares two values for equality.
      *
-     * @param a Left value.
-     * @param b Right value.
-     * @return True if both values contain the same bytes.
+     * @param left Left value.
+     * @param right Right value.
+     * @return true if both values contain the same bytes.
      */
     [[nodiscard]] friend bool operator==(
-        const Value &a,
-        const Value &b)
+        const Value &left,
+        const Value &right)
     {
-      return a.data_ == b.data_;
+      return left.data_ == right.data_;
     }
 
     /**
      * @brief Compares two values for inequality.
      *
-     * @param a Left value.
-     * @param b Right value.
-     * @return True if values are different.
+     * @param left Left value.
+     * @param right Right value.
+     * @return true if values are different.
      */
     [[nodiscard]] friend bool operator!=(
-        const Value &a,
-        const Value &b)
+        const Value &left,
+        const Value &right)
     {
-      return !(a == b);
+      return !(left == right);
     }
 
   private:

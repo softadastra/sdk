@@ -1,89 +1,110 @@
-/*
- * 02_persistent_store.cpp
+/**
  *
- * WAL-backed local store example.
+ *  @file 02_persistent_store.cpp
+ *  @author Softadastra
+ *
+ *  Copyright 2026, Softadastra.
+ *  All rights reserved.
+ *  https://github.com/softadastra/sdk.git
+ *
+ *  Licensed under the Apache License, Version 2.0.
+ *
+ *  Softadastra C++ SDK
+ *
  */
 
-#include <iostream>
-
 #include <softadastra/sdk.hpp>
+
+#include <iostream>
 
 int main()
 {
   using namespace softadastra::sdk;
 
-  ClientOptions options =
-      ClientOptions::local("node-persistent");
+  Client client{
+      ClientOptions::persistent(
+          "example-persistent-store",
+          "data/examples/persistent-store.wal")};
 
-  options.enable_transport = false;
-  options.enable_discovery = false;
-  options.enable_wal = true;
-  options.wal_path = "data/sdk-persistent-store.wal";
-  options.auto_flush = true;
+  const auto opened = client.open();
 
-  Client client{options};
-
-  auto open_result = client.open();
-
-  if (open_result.is_err())
+  if (opened.is_err())
   {
-    std::cerr << "failed to open client: "
-              << open_result.error().message()
+    std::cerr << "open failed: "
+              << opened.error().code_string()
+              << ": "
+              << opened.error().message()
               << "\n";
 
     return 1;
   }
 
-  auto put_result = client.put(
-      "settings/theme",
-      "dark");
+  const auto stored_name =
+      client.put("profile/name", "Ada");
 
-  if (put_result.is_err())
+  if (stored_name.is_err())
   {
-    std::cerr << "failed to store value: "
-              << put_result.error().message()
+    std::cerr << "put failed: "
+              << stored_name.error().code_string()
+              << ": "
+              << stored_name.error().message()
               << "\n";
 
     return 1;
   }
 
-  auto value_result = client.get("settings/theme");
+  const auto stored_language =
+      client.put("profile/language", "C++");
 
-  if (value_result.is_err())
+  if (stored_language.is_err())
   {
-    std::cerr << "failed to read value: "
-              << value_result.error().message()
+    std::cerr << "put failed: "
+              << stored_language.error().code_string()
+              << ": "
+              << stored_language.error().message()
               << "\n";
 
     return 1;
   }
 
-  auto sync_result = client.sync_state();
+  const auto name =
+      client.get("profile/name");
 
-  if (sync_result.is_err())
+  if (name.is_err())
   {
-    std::cerr << "failed to read sync state: "
-              << sync_result.error().message()
+    std::cerr << "get failed: "
+              << name.error().code_string()
+              << ": "
+              << name.error().message()
               << "\n";
 
     return 1;
   }
 
-  std::cout << "key          : settings/theme\n";
-  std::cout << "value        : "
-            << value_result.value().to_string()
+  const auto language =
+      client.get("profile/language");
+
+  if (language.is_err())
+  {
+    std::cerr << "get failed: "
+              << language.error().code_string()
+              << ": "
+              << language.error().message()
+              << "\n";
+
+    return 1;
+  }
+
+  std::cout << "profile/name     : "
+            << name.value().to_string()
             << "\n";
 
-  std::cout << "wal path     : "
-            << options.wal_path
+  std::cout << "profile/language : "
+            << language.value().to_string()
             << "\n";
 
-  std::cout << "store size   : "
+  std::cout << "entries          : "
             << client.size()
-            << "\n";
-
-  std::cout << "outbox size  : "
-            << sync_result.value().outbox_size
             << "\n";
 
   client.close();

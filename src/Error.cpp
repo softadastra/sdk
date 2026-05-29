@@ -1,15 +1,23 @@
-/*
- * Error.cpp
+/**
+ *
+ *  @file Error.cpp
+ *  @author Softadastra
+ *
+ *  Copyright 2026, Softadastra.
+ *  All rights reserved.
+ *  https://github.com/softadastra/sdk.git
+ *
+ *  Licensed under the Apache License, Version 2.0.
+ *
+ *  Softadastra C++ SDK
+ *
  */
 
 #include <softadastra/sdk/Error.hpp>
-
 #include <utility>
 
 namespace softadastra::sdk
 {
-  namespace core_errors = softadastra::core::errors;
-
   Error::Error(
       Code code,
       std::string message,
@@ -32,6 +40,16 @@ namespace softadastra::sdk
   {
     return Error{
         code,
+        std::move(message),
+        std::move(context)};
+  }
+
+  Error Error::unknown(
+      std::string message,
+      std::string context)
+  {
+    return Error{
+        Code::Unknown,
         std::move(message),
         std::move(context)};
   }
@@ -66,12 +84,32 @@ namespace softadastra::sdk
         std::move(context)};
   }
 
+  Error Error::already_exists(
+      std::string message,
+      std::string context)
+  {
+    return Error{
+        Code::AlreadyExists,
+        std::move(message),
+        std::move(context)};
+  }
+
   Error Error::io_error(
       std::string message,
       std::string context)
   {
     return Error{
         Code::IoError,
+        std::move(message),
+        std::move(context)};
+  }
+
+  Error Error::store_error(
+      std::string message,
+      std::string context)
+  {
+    return Error{
+        Code::StoreError,
         std::move(message),
         std::move(context)};
   }
@@ -126,22 +164,6 @@ namespace softadastra::sdk
         std::move(context)};
   }
 
-  Error Error::from_core(const core_errors::Error &error)
-  {
-    return Error{
-        from_core_code(error.code()),
-        error.message(),
-        error.context().message()};
-  }
-
-  core_errors::Error Error::to_core() const
-  {
-    return core_errors::Error::make(
-        to_core_code(code_),
-        message_,
-        core_errors::ErrorContext{context_});
-  }
-
   Error::Code Error::code() const noexcept
   {
     return code_;
@@ -157,11 +179,6 @@ namespace softadastra::sdk
     return context_;
   }
 
-  bool Error::has_context() const noexcept
-  {
-    return !context_.empty();
-  }
-
   bool Error::ok() const noexcept
   {
     return code_ == Code::None;
@@ -170,6 +187,11 @@ namespace softadastra::sdk
   bool Error::has_error() const noexcept
   {
     return code_ != Code::None;
+  }
+
+  bool Error::has_context() const noexcept
+  {
+    return !context_.empty();
   }
 
   void Error::clear() noexcept
@@ -221,97 +243,14 @@ namespace softadastra::sdk
 
     case Code::InternalError:
       return "internal_error";
-
-    default:
-      return "unknown";
     }
+
+    return "unknown";
   }
 
   std::string_view Error::code_string() const noexcept
   {
     return to_string(code_);
-  }
-
-  Error::Code Error::from_core_code(
-      core_errors::ErrorCode code) noexcept
-  {
-    switch (code)
-    {
-    case core_errors::ErrorCode::None:
-      return Code::None;
-
-    case core_errors::ErrorCode::Unknown:
-      return Code::Unknown;
-
-    case core_errors::ErrorCode::InvalidArgument:
-      return Code::InvalidArgument;
-
-    case core_errors::ErrorCode::InvalidState:
-      return Code::InvalidState;
-
-    case core_errors::ErrorCode::NotFound:
-      return Code::NotFound;
-
-    case core_errors::ErrorCode::AlreadyExists:
-      return Code::AlreadyExists;
-
-    case core_errors::ErrorCode::FileNotFound:
-    case core_errors::ErrorCode::FileAlreadyExists:
-    case core_errors::ErrorCode::FileReadError:
-    case core_errors::ErrorCode::FileWriteError:
-    case core_errors::ErrorCode::PermissionDenied:
-      return Code::IoError;
-
-    case core_errors::ErrorCode::ConfigInvalid:
-    case core_errors::ErrorCode::ConfigMissing:
-      return Code::InvalidArgument;
-
-    case core_errors::ErrorCode::HashError:
-    case core_errors::ErrorCode::TimeError:
-    case core_errors::ErrorCode::InternalError:
-      return Code::InternalError;
-
-    default:
-      return Code::Unknown;
-    }
-  }
-
-  core_errors::ErrorCode Error::to_core_code(Code code) noexcept
-  {
-    switch (code)
-    {
-    case Code::None:
-      return core_errors::ErrorCode::None;
-
-    case Code::Unknown:
-      return core_errors::ErrorCode::Unknown;
-
-    case Code::InvalidArgument:
-      return core_errors::ErrorCode::InvalidArgument;
-
-    case Code::InvalidState:
-      return core_errors::ErrorCode::InvalidState;
-
-    case Code::NotFound:
-      return core_errors::ErrorCode::NotFound;
-
-    case Code::AlreadyExists:
-      return core_errors::ErrorCode::AlreadyExists;
-
-    case Code::IoError:
-      return core_errors::ErrorCode::FileReadError;
-
-    case Code::StoreError:
-    case Code::SyncError:
-    case Code::TransportError:
-    case Code::DiscoveryError:
-    case Code::MetadataError:
-    case Code::InternalError:
-      return core_errors::ErrorCode::InternalError;
-
-    default:
-      return core_errors::ErrorCode::Unknown;
-    }
   }
 
 } // namespace softadastra::sdk

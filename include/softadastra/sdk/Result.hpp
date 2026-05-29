@@ -1,11 +1,11 @@
 /**
  *
  *  @file Result.hpp
- *  @author Gaspard Kirira
+ *  @author Softadastra
  *
  *  Copyright 2026, Softadastra.
  *  All rights reserved.
- *  https://github.com/softadastra/sdk-cpp
+ *  https://github.com/softadastra/sdk.git
  *
  *  Licensed under the Apache License, Version 2.0.
  *
@@ -23,26 +23,14 @@ namespace softadastra::sdk
   /**
    * @brief Public SDK result type.
    *
-   * Result<T, E> represents either a successful value of type T or an error
-   * of type E.
+   * Result<T, E> represents either a successful value of type T or an error of
+   * type E.
    *
-   * It is intentionally mapped to the stable Softadastra core Result type so
-   * the SDK does not duplicate error-handling primitives.
+   * The SDK reuses the Softadastra core Result implementation instead of
+   * duplicating the same error-handling primitive.
    *
-   * Typical usage:
-   *
-   * @code
-   * softadastra::sdk::Result<std::string, Error> result = client.get("key");
-   *
-   * if (result.is_ok())
-   * {
-   *   auto value = result.value();
-   * }
-   * else
-   * {
-   *   auto error = result.error();
-   * }
-   * @endcode
+   * @tparam T Success value type.
+   * @tparam E Error value type.
    */
   template <typename T, typename E>
   using Result = softadastra::core::types::Result<T, E>;

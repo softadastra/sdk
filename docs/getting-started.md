@@ -1,437 +1,486 @@
-# Getting Started with the Softadastra C++ SDK
+# Getting Started
 
-The Softadastra C++ SDK provides a small, stable, user-facing API on top of the Softadastra runtime modules.
+This guide shows how to start using the Softadastra C++ SDK.
+The SDK gives applications a simple public API over the Softadastra local-first runtime.
+You do not need to manually wire the internal store, WAL, sync, transport, discovery, or metadata modules.
 
-It is designed to make Softadastra easy to embed in C++ applications without exposing the full internal module graph directly.
+## Install or build the SDK
 
-## What the SDK provides
+Clone the SDK repository:
 
-The SDK wraps the lower-level Softadastra modules:
-
-- `core`
-- `store`
-- `wal`
-- `sync`
-- `transport`
-- `discovery`
-- `metadata`
-
-Instead of manually wiring these modules together, applications use one main entry point:
-
-```cpp
-#include <softadastra/sdk.hpp>
-
-softadastra::sdk::Client client;
+```bash
+git clone https://github.com/softadastra/sdk.git
+cd sdk
 ```
 
-## Main idea
+Build with Vix:
 
-Softadastra is built around local-first and offline-first execution. That means:
+```bash
+vix build
+```
 
-- data is written locally first
-- local writes can be persisted through the WAL
-- sync operations are tracked
-- transport and discovery can be enabled when peer communication is needed
-- metadata exposes local node information
+Build with examples:
 
-The SDK keeps this model simple.
+```bash
+vix build -- -DSDK_CPP_BUILD_EXAMPLES=ON
+```
 
-## Basic local usage
+Build with tests:
 
-The simplest usage is an in-memory local client.
+```bash
+vix build -- -DSDK_CPP_BUILD_TESTS=ON
+```
+
+You can also build with CMake directly:
+
+```bash
+cmake -S . -B build \
+  -DSDK_CPP_BUILD_EXAMPLES=ON \
+  -DSDK_CPP_BUILD_TESTS=ON
+
+cmake --build build
+```
+
+## Include the SDK
+
+Use the umbrella header:
 
 ```cpp
-#include <iostream>
 #include <softadastra/sdk.hpp>
+```
+
+Then use the SDK namespace:
+
+```cpp
+using namespace softadastra::sdk;
+```
+
+## Your first client
+
+Create a memory-only client:
+
+```cpp
+#include <softadastra/sdk.hpp>
+
+#include <iostream>
 
 int main()
 {
-    using namespace softadastra::sdk;
+  using namespace softadastra::sdk;
 
-    ClientOptions options = ClientOptions::memory_only("node-local");
+  Client client{ClientOptions::memory_only("node-1")};
 
-    Client client{options};
+  const auto opened = client.open();
 
-    auto open_result = client.open();
+  if (opened.is_err())
+  {
+    std::cerr << opened.error().code_string()
+              << ": "
+              << opened.error().message()
+              << "\n";
 
-    if (open_result.is_err())
-    {
-        std::cerr << open_result.error().message() << "\n";
-        return 1;
-    }
+    return 1;
+  }
 
-    auto put_result = client.put("app/name", "Softadastra SDK");
+  client.put("hello", "world");
 
-    if (put_result.is_err())
-    {
-        std::cerr << put_result.error().message() << "\n";
-        return 1;
-    }
+  const auto value =
+      client.get("hello");
 
-    auto value_result = client.get("app/name");
+  if (value.is_ok())
+  {
+    std::cout << value.value().to_string() << "\n";
+  }
 
-    if (value_result.is_err())
-    {
-        std::cerr << value_result.error().message() << "\n";
-        return 1;
-    }
+  client.close();
 
-    std::cout << value_result.value().to_string() << "\n";
-
-    client.close();
-
-    return 0;
+  return 0;
 }
 ```
 
-## Persistent local store
+Expected output:
 
-To persist local operations through the WAL, enable WAL support.
+```txt
+world
+```
+
+## What happened?
+
+This example does four things:
+
+```txt
+1. creates a local SDK client
+2. opens the Softadastra runtime
+3. writes a value locally
+4. reads the value from the local store
+```
+
+The important point:
+
+```txt
+client.put("hello", "world");
+```
+
+does not need the network.
+
+Softadastra accepts the write locally first.
+
+## Memory-only mode
+
+Memory-only mode is useful for examples, tests, and temporary local state.
 
 ```cpp
-#include <iostream>
-#include <softadastra/sdk.hpp>
+ClientOptions options =
+    ClientOptions::memory_only("node-memory");
+```
 
-int main()
-{
-    using namespace softadastra::sdk;
+In memory-only mode, data does not survive restart.
 
-    ClientOptions options = ClientOptions::persistent(
+Use it when you want a simple local runtime without persistence.
+
+## Persistent mode
+
+Use persistent mode when local writes must survive restart.
+
+```cpp
+ClientOptions options =
+    ClientOptions::persistent(
         "node-persistent",
         "data/sdk-store.wal");
-
-    Client client{options};
-
-    auto open_result = client.open();
-
-    if (open_result.is_err())
-    {
-        std::cerr << open_result.error().message() << "\n";
-        return 1;
-    }
-
-    auto put_result = client.put("settings/theme", "dark");
-
-    if (put_result.is_err())
-    {
-        std::cerr << put_result.error().message() << "\n";
-        return 1;
-    }
-
-    auto value_result = client.get("settings/theme");
-
-    if (value_result.is_ok())
-    {
-        std::cout << value_result.value().to_string() << "\n";
-    }
-
-    client.close();
-
-    return 0;
-}
 ```
 
-## Client options
-
-`ClientOptions` controls how the SDK client is initialized.
+Example:
 
 ```cpp
-ClientOptions options;
+#include <softadastra/sdk.hpp>
 
-options.node_id      = "node-1";
-options.display_name = "Local Node";
-options.version      = "0.1.0";
+#include <iostream>
 
-options.enable_wal = true;
-options.wal_path   = "data/store.wal";
-options.auto_flush = true;
-
-options.enable_transport = true;
-options.transport_host   = "127.0.0.1";
-options.transport_port   = 4040;
-
-options.enable_discovery        = true;
-options.discovery_host          = "127.0.0.1";
-options.discovery_port          = 5050;
-```
-
-### Recommended constructors
-
-| Constructor | Use case |
-|-------------|----------|
-| `ClientOptions::memory_only("node")` | Tests, demos, temporary state |
-| `ClientOptions::local("node")` | Local development, optional transport/discovery |
-| `ClientOptions::persistent("node", "path/store.wal")` | Durable writes, offline-first apps |
-
-## Opening and closing the client
-
-A client must be opened before use.
-
-```cpp
-Client client{options};
-
-auto result = client.open();
-
-if (result.is_err())
+int main()
 {
-    std::cerr << result.error().message() << "\n";
+  using namespace softadastra::sdk;
+
+  Client client{
+      ClientOptions::persistent(
+          "node-persistent",
+          "data/sdk-store.wal")};
+
+  if (client.open().is_err())
+  {
     return 1;
-}
+  }
 
-// ... use client ...
+  client.put("profile/name", "Ada");
 
-client.close();
-```
+  const auto name =
+      client.get("profile/name");
 
-> The destructor also closes the client automatically, but explicit `close()` is clearer in examples and applications.
+  if (name.is_ok())
+  {
+    std::cout << name.value().to_string() << "\n";
+  }
 
-## Writing values
+  client.close();
 
-```cpp
-// String shorthand
-auto result = client.put("profile/name", "Ada");
-
-// Typed SDK values
-Key   key{"profile/name"};
-Value value = Value::from_string("Ada");
-
-auto result = client.put(key, value);
-```
-
-## Reading values
-
-```cpp
-auto result = client.get("profile/name");
-
-if (result.is_ok())
-{
-    std::cout << result.value().to_string() << "\n";
-}
-else
-{
-    std::cerr << result.error().message() << "\n";
+  return 0;
 }
 ```
 
-## Removing values
+Persistent mode uses a WAL path so accepted local writes can be recovered later.
+
+## Restart recovery
+
+A persistent client can recover data after closing and reopening.
 
 ```cpp
-auto result = client.remove("profile/name");
+#include <softadastra/sdk.hpp>
 
-if (result.is_err())
+#include <iostream>
+#include <string>
+
+int main()
 {
-    std::cerr << result.error().message() << "\n";
+  using namespace softadastra::sdk;
+
+  const std::string wal_path =
+      "data/recovery.wal";
+
+  {
+    Client writer{
+        ClientOptions::persistent(
+            "node-writer",
+            wal_path)};
+
+    if (writer.open().is_err())
+    {
+      return 1;
+    }
+
+    writer.put("status", "saved-before-restart");
+    writer.close();
+  }
+
+  {
+    Client reader{
+        ClientOptions::persistent(
+            "node-reader",
+            wal_path)};
+
+    if (reader.open().is_err())
+    {
+      return 1;
+    }
+
+    const auto value =
+        reader.get("status");
+
+    if (value.is_ok())
+    {
+      std::cout << value.value().to_string() << "\n";
+    }
+
+    reader.close();
+  }
+
+  return 0;
 }
 ```
 
-## Checking keys
+Expected output:
+
+```txt
+saved-before-restart
+```
+
+This is the basic Softadastra guarantee:
+
+```txt
+A write accepted locally should remain durable.
+```
+
+## Store operations
+
+The SDK exposes simple local store operations:
 
 ```cpp
-if (client.contains("profile/name"))
+client.put("key", "value");
+
+const auto value =
+    client.get("key");
+
+client.remove("key");
+
+const bool exists =
+    client.contains("key");
+
+const std::size_t count =
+    client.size();
+```
+
+## Error handling
+
+SDK operations return `Result<T, Error>`.
+
+Example with `get()`:
+
+```cpp
+const auto value =
+    client.get("name");
+
+if (value.is_err())
 {
-    std::cout << "key exists\n";
+  std::cerr << value.error().code_string()
+            << ": "
+            << value.error().message()
+            << "\n";
+
+  return 1;
 }
 
-std::cout << client.size() << "\n";
+std::cout << value.value().to_string() << "\n";
+```
 
-if (client.empty())
+Example with `put()`:
+
+```cpp
+const auto stored =
+    client.put("name", "Softadastra");
+
+if (stored.is_err())
 {
-    std::cout << "store is empty\n";
+  std::cerr << stored.error().code_string()
+            << ": "
+            << stored.error().message()
+            << "\n";
+
+  return 1;
 }
+```
+
+Common error codes:
+
+```cpp
+Error::Code::InvalidArgument
+Error::Code::InvalidState
+Error::Code::NotFound
+Error::Code::StoreError
+Error::Code::SyncError
+Error::Code::TransportError
+Error::Code::DiscoveryError
+Error::Code::MetadataError
+Error::Code::InternalError
 ```
 
 ## Sync state
 
-Every local operation can be submitted into the sync pipeline.
+Every local write is submitted to the sync pipeline.
+
+You can inspect the current sync state:
 
 ```cpp
-auto state = client.sync_state();
+const auto state =
+    client.sync_state();
 
 if (state.is_ok())
 {
-    std::cout << "outbox: " << state.value().outbox_size  << "\n";
-    std::cout << "queued: " << state.value().queued_count << "\n";
+  std::cout << "outbox: "
+            << state.value().outbox_size()
+            << "\n";
+
+  std::cout << "queued: "
+            << state.value().queued_count()
+            << "\n";
 }
 ```
 
-## Manual sync tick
-
-The SDK exposes deterministic manual sync ticking.
+You can also advance the sync pipeline manually:
 
 ```cpp
-auto result = client.tick();
+const auto tick =
+    client.tick();
 
-if (result.is_ok())
+if (tick.is_ok())
 {
-    std::cout << "batch size: " << result.value().batch_size << "\n";
+  std::cout << "batch: "
+            << tick.value().batch_size()
+            << "\n";
 }
-```
-
-A tick can:
-
-- retry expired operations
-- return the next batch ready for transport
-- optionally prune completed operations
-
-```cpp
-auto result = client.tick(true);
 ```
 
 ## Transport
 
-Enable transport to communicate with peers:
+Transport is optional.
+
+Enable it through `ClientOptions`:
 
 ```cpp
-ClientOptions options = ClientOptions::local("node-a");
+ClientOptions options =
+    ClientOptions::memory_only("node-transport")
+        .with_local_transport(9100);
 
-options.enable_transport = true;
-options.transport_host   = "127.0.0.1";
-options.transport_port   = 4041;
+Client client{options};
 
-// Start
-auto result = client.start_transport();
+client.open();
+client.start_transport();
+```
 
-if (result.is_err())
-{
-    std::cerr << result.error().message() << "\n";
-}
+Connect to a peer:
 
-// Connect to a peer
-Peer peer{"node-b", "127.0.0.1", 4042};
+```cpp
+Peer peer =
+    Peer::local("peer-1", 9101);
 
-auto result = client.connect(peer);
+client.connect(peer);
+```
 
-// Stop
+Stop transport:
+
+```cpp
 client.stop_transport();
 ```
 
 ## Discovery
 
-Enable discovery to find other peers:
+Discovery is optional.
+
+Enable it through `ClientOptions`:
 
 ```cpp
-ClientOptions options = ClientOptions::local("node-discovery");
+ClientOptions options =
+    ClientOptions::memory_only("node-discovery")
+        .with_local_discovery(5051);
 
-options.enable_discovery          = true;
-options.discovery_host            = "127.0.0.1";
-options.discovery_port            = 5051;
-options.discovery_broadcast_host  = "127.0.0.1";
-options.discovery_broadcast_port  = 5052;
+Client client{options};
 
-// Start
-auto result = client.start_discovery();
+client.open();
+client.start_discovery();
 
-// List peers
-auto peers = client.peers();
+const auto peers =
+    client.peers();
 
-if (peers.is_ok())
-{
-    for (const auto &peer : peers.value())
-    {
-        std::cout << peer.node_id << " "
-                  << peer.host   << ":"
-                  << peer.port   << "\n";
-    }
-}
-
-// Stop
 client.stop_discovery();
 ```
 
 ## Metadata
 
-The SDK exposes local node metadata through `NodeInfo`.
+You can expose node metadata:
 
 ```cpp
-auto result = client.refresh_node_info();
+ClientOptions options =
+    ClientOptions::memory_only("node-info")
+        .with_metadata("Local Node", "0.1.0");
 
-if (result.is_ok())
-{
-    const auto &node = result.value();
-
-    std::cout << node.node_id      << "\n";
-    std::cout << node.display_name << "\n";
-    std::cout << node.hostname     << "\n";
-    std::cout << node.os_name      << "\n";
-    std::cout << node.version      << "\n";
-}
-```
-
-## Error handling
-
-SDK operations return `Result<T, Error>` or `Result<void, Error>`.
-
-```cpp
-auto result = client.get("missing/key");
-
-if (result.is_err())
-{
-    std::cerr << result.error().code_string()
-              << ": "
-              << result.error().message()
-              << "\n";
-}
-```
-
-Common error categories:
-
-- `invalid argument`
-- `invalid state`
-- `not found`
-- `store error`
-- `sync error`
-- `transport error`
-- `discovery error`
-- `metadata error`
-- `internal error`
-
-## Building
-
-```bash
-# Configure
-cmake --preset dev-ninja
-
-# Build
-cmake --build --preset build-ninja
-
-# Run tests
-ctest --test-dir build-ninja --output-on-failure
-```
-
-## Example files
-
-| File | Description |
-|------|-------------|
-| `examples/01_local_store.cpp` | Basic in-memory local store |
-| `examples/02_persistent_store.cpp` | WAL-backed persistent store |
-| `examples/03_remove_value.cpp` | Removing keys |
-| `examples/04_basic_sync.cpp` | Local sync pipeline |
-| `examples/05_tcp_peer_sync.cpp` | TCP peer sync |
-| `examples/06_discovery.cpp` | Peer discovery |
-| `examples/07_node_metadata.cpp` | Node metadata |
-
-### Recommended first test
-
-```bash
-cmake --build --preset build-ninja --target sdk_cpp_example_01_local_store
-```
-
-Then run the generated example from the build directory.
-
-## SDK design rule
-
-The SDK should remain the clean public API.
-
-Internal modules can stay powerful and detailed, but application developers should not need to manually understand `StoreEngine`, `SyncEngine`, `SyncScheduler`, `TransportEngine`, `DiscoveryService`, or `MetadataService`.
-
-The SDK client hides that wiring behind:
-
-```cpp
 Client client{options};
+
 client.open();
-client.put("key", "value");
-client.tick();
-client.close();
+
+const auto info =
+    client.refresh_node_info();
+
+if (info.is_ok())
+{
+  const auto &node = info.value();
+
+  std::cout << node.node_id() << "\n";
+  std::cout << node.display_name() << "\n";
+  std::cout << node.hostname() << "\n";
+  std::cout << node.os_name() << "\n";
+  std::cout << node.version() << "\n";
+}
 ```
 
-> That is the main purpose of `sdk-cpp`.
+## Run the examples
+
+After building with examples enabled:
+
+```bash
+./build/sdk_cpp_01_local_store
+./build/sdk_cpp_02_persistent_store
+./build/sdk_cpp_03_restart_recovery
+./build/sdk_cpp_04_sync_state
+./build/sdk_cpp_05_tick
+./build/sdk_cpp_06_transport
+./build/sdk_cpp_07_discovery
+./build/sdk_cpp_08_metadata
+```
+
+With a Ninja build directory, the path may be:
+
+```bash
+./build-ninja/sdk_cpp_01_local_store
+```
+
+## Next step
+
+Read the dedicated guides:
+
+```txt
+docs/client.md
+docs/local-store.md
+docs/persistence.md
+docs/sync.md
+docs/transport.md
+docs/discovery.md
+docs/metadata.md
+docs/errors.md
+```

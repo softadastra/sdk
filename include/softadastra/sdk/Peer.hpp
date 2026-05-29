@@ -1,11 +1,11 @@
 /**
  *
  *  @file Peer.hpp
- *  @author Gaspard Kirira
+ *  @author Softadastra
  *
  *  Copyright 2026, Softadastra.
  *  All rights reserved.
- *  https://github.com/softadastra/sdk-cpp
+ *  https://github.com/softadastra/sdk.git
  *
  *  Licensed under the Apache License, Version 2.0.
  *
@@ -18,46 +18,26 @@
 
 #include <cstdint>
 #include <string>
-#include <utility>
-
-#include <softadastra/discovery/Peer.hpp>
-#include <softadastra/transport/core/PeerInfo.hpp>
 
 namespace softadastra::sdk
 {
-  namespace discovery_api = softadastra::discovery;
-  namespace transport_core = softadastra::transport::core;
-
   /**
    * @brief Public SDK peer representation.
    *
-   * Peer describes a remote or local node that the SDK can discover,
-   * connect to, or exchange sync data with.
+   * Peer describes a remote or local Softadastra node that can be used by
+   * transport, discovery, sync, or higher-level SDK features.
    *
-   * It intentionally exposes only the stable developer-facing fields:
-   * - node id
+   * The SDK intentionally exposes only stable public fields:
+   * - node identifier
    * - host
    * - port
    *
-   * Internal discovery and transport objects remain hidden behind this type.
+   * Internal transport and discovery peer types are not exposed through this
+   * public header.
    */
-  struct Peer
+  class Peer
   {
-    /**
-     * @brief Logical peer node identifier.
-     */
-    std::string node_id{};
-
-    /**
-     * @brief Peer host or IP address.
-     */
-    std::string host{"127.0.0.1"};
-
-    /**
-     * @brief Peer transport port.
-     */
-    std::uint16_t port{0};
-
+  public:
     /**
      * @brief Creates an empty invalid peer.
      */
@@ -66,151 +46,133 @@ namespace softadastra::sdk
     /**
      * @brief Creates a peer.
      *
-     * @param peer_node_id Logical peer node id.
-     * @param peer_host Peer host or IP address.
-     * @param peer_port Peer transport port.
+     * @param node_id Logical peer node identifier.
+     * @param host Peer host or IP address.
+     * @param port Peer transport port.
      */
     Peer(
-        std::string peer_node_id,
-        std::string peer_host,
-        std::uint16_t peer_port)
-        : node_id(std::move(peer_node_id)),
-          host(std::move(peer_host)),
-          port(peer_port)
-    {
-    }
+        std::string node_id,
+        std::string host,
+        std::uint16_t port);
 
     /**
      * @brief Creates a localhost peer.
      *
-     * @param peer_node_id Logical peer node id.
-     * @param peer_port Peer transport port.
+     * @param node_id Logical peer node identifier.
+     * @param port Peer transport port.
      * @return SDK peer.
      */
     [[nodiscard]] static Peer local(
-        std::string peer_node_id,
-        std::uint16_t peer_port)
-    {
-      return Peer{
-          std::move(peer_node_id),
-          "127.0.0.1",
-          peer_port};
-    }
+        std::string node_id,
+        std::uint16_t port);
 
     /**
-     * @brief Creates a peer from Softadastra discovery peer.
+     * @brief Returns the logical peer node identifier.
      *
-     * @param peer Discovery peer.
-     * @return SDK peer.
+     * @return Peer node id.
      */
-    [[nodiscard]] static Peer from_discovery(
-        const discovery_api::Peer &peer)
-    {
-      return Peer{
-          peer.node_id,
-          peer.host,
-          peer.port};
-    }
+    [[nodiscard]] const std::string &node_id() const noexcept;
 
     /**
-     * @brief Creates a peer from Softadastra transport peer info.
+     * @brief Returns the peer host.
      *
-     * @param peer Transport peer info.
-     * @return SDK peer.
+     * @return Peer host or IP address.
      */
-    [[nodiscard]] static Peer from_transport(
-        const transport_core::PeerInfo &peer)
-    {
-      return Peer{
-          peer.node_id,
-          peer.host,
-          peer.port};
-    }
+    [[nodiscard]] const std::string &host() const noexcept;
 
     /**
-     * @brief Converts this SDK peer to Softadastra discovery peer.
+     * @brief Returns the peer transport port.
      *
-     * @return Discovery peer.
+     * @return Peer port.
      */
-    [[nodiscard]] discovery_api::Peer to_discovery() const
-    {
-      return discovery_api::Peer{
-          node_id,
-          host,
-          port};
-    }
+    [[nodiscard]] std::uint16_t port() const noexcept;
 
     /**
-     * @brief Converts this SDK peer to Softadastra transport peer info.
+     * @brief Sets the logical peer node identifier.
      *
-     * @return Transport peer info.
+     * @param value New node id.
      */
-    [[nodiscard]] transport_core::PeerInfo to_transport() const
-    {
-      return transport_core::PeerInfo{
-          node_id,
-          host,
-          port};
-    }
+    void set_node_id(std::string value);
+
+    /**
+     * @brief Sets the peer host.
+     *
+     * @param value New host.
+     */
+    void set_host(std::string value);
+
+    /**
+     * @brief Sets the peer transport port.
+     *
+     * @param value New port.
+     */
+    void set_port(std::uint16_t value) noexcept;
 
     /**
      * @brief Returns true if this peer points to localhost.
+     *
+     * @return true if the host is localhost or 127.0.0.1.
      */
-    [[nodiscard]] bool is_localhost() const noexcept
-    {
-      return host == "127.0.0.1" ||
-             host == "localhost";
-    }
+    [[nodiscard]] bool is_localhost() const noexcept;
 
     /**
-     * @brief Returns true if the peer is usable.
+     * @brief Returns true if the peer can be used by the SDK.
+     *
+     * A valid peer must have:
+     * - a non-empty node id
+     * - a non-empty host
+     * - a non-zero port
+     *
+     * @return true if the peer is valid.
      */
-    [[nodiscard]] bool is_valid() const noexcept
-    {
-      return !node_id.empty() &&
-             !host.empty() &&
-             port != 0;
-    }
+    [[nodiscard]] bool is_valid() const noexcept;
 
     /**
-     * @brief Backward-compatible valid alias.
+     * @brief Backward-compatible alias for is_valid().
+     *
+     * @return true if the peer is valid.
      */
-    [[nodiscard]] bool valid() const noexcept
-    {
-      return is_valid();
-    }
+    [[nodiscard]] bool valid() const noexcept;
 
     /**
-     * @brief Clears the peer.
+     * @brief Clears the peer and makes it invalid.
      */
-    void clear() noexcept
-    {
-      node_id.clear();
-      host.clear();
-      port = 0;
-    }
+    void clear() noexcept;
 
     /**
      * @brief Compares two peers for equality.
+     *
+     * @param left Left peer.
+     * @param right Right peer.
+     * @return true if both peers contain the same node id, host, and port.
      */
     [[nodiscard]] friend bool operator==(
-        const Peer &a,
-        const Peer &b) noexcept
+        const Peer &left,
+        const Peer &right) noexcept
     {
-      return a.node_id == b.node_id &&
-             a.host == b.host &&
-             a.port == b.port;
+      return left.node_id_ == right.node_id_ &&
+             left.host_ == right.host_ &&
+             left.port_ == right.port_;
     }
 
     /**
      * @brief Compares two peers for inequality.
+     *
+     * @param left Left peer.
+     * @param right Right peer.
+     * @return true if peers are different.
      */
     [[nodiscard]] friend bool operator!=(
-        const Peer &a,
-        const Peer &b) noexcept
+        const Peer &left,
+        const Peer &right) noexcept
     {
-      return !(a == b);
+      return !(left == right);
     }
+
+  private:
+    std::string node_id_{};
+    std::string host_{"127.0.0.1"};
+    std::uint16_t port_{0};
   };
 
 } // namespace softadastra::sdk

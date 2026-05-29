@@ -1,11 +1,11 @@
 /**
  *
  *  @file Client.hpp
- *  @author Gaspard Kirira
+ *  @author Softadastra
  *
  *  Copyright 2026, Softadastra.
  *  All rights reserved.
- *  https://github.com/softadastra/sdk-cpp
+ *  https://github.com/softadastra/sdk.git
  *
  *  Licensed under the Apache License, Version 2.0.
  *
@@ -18,7 +18,6 @@
 
 #include <cstddef>
 #include <memory>
-#include <optional>
 #include <string>
 #include <vector>
 
@@ -28,61 +27,30 @@
 #include <softadastra/sdk/NodeInfo.hpp>
 #include <softadastra/sdk/Peer.hpp>
 #include <softadastra/sdk/Result.hpp>
-#include <softadastra/sdk/SyncResult.hpp>
+#include <softadastra/sdk/SyncState.hpp>
 #include <softadastra/sdk/TickResult.hpp>
 #include <softadastra/sdk/Value.hpp>
 
-#include <softadastra/store/engine/StoreEngine.hpp>
-
-#include <softadastra/sync/core/SyncConfig.hpp>
-#include <softadastra/sync/core/SyncContext.hpp>
-#include <softadastra/sync/engine/SyncEngine.hpp>
-#include <softadastra/sync/scheduler/SyncScheduler.hpp>
-
-#include <softadastra/transport/backend/TcpTransportBackend.hpp>
-#include <softadastra/transport/core/TransportConfig.hpp>
-#include <softadastra/transport/core/TransportContext.hpp>
-#include <softadastra/transport/engine/TransportEngine.hpp>
-
-#include <softadastra/discovery/DiscoveryOptions.hpp>
-#include <softadastra/discovery/DiscoveryService.hpp>
-
-#include <softadastra/metadata/MetadataOptions.hpp>
-#include <softadastra/metadata/MetadataService.hpp>
-
 namespace softadastra::sdk
 {
-  namespace store_engine = softadastra::store::engine;
-  namespace store_core = softadastra::store::core;
-  namespace store_types = softadastra::store::types;
-
-  namespace sync_engine = softadastra::sync::engine;
-  namespace sync_core = softadastra::sync::core;
-  namespace sync_scheduler = softadastra::sync::scheduler;
-
-  namespace transport_backend = softadastra::transport::backend;
-  namespace transport_core = softadastra::transport::core;
-  namespace transport_engine = softadastra::transport::engine;
-
-  namespace discovery_api = softadastra::discovery;
-  namespace metadata_api = softadastra::metadata;
-
   /**
    * @brief High-level Softadastra C++ SDK client.
    *
-   * Client is the main developer-facing API of sdk-cpp.
+   * Client is the main public entry point of the Softadastra C++ SDK.
    *
-   * It hides the internal Softadastra modules behind a small and stable API:
-   * - local durable key-value writes
-   * - WAL-backed persistence through StoreEngine
-   * - sync queue management through SyncEngine
-   * - manual sync ticks through SyncScheduler
+   * It exposes a small, stable developer-facing API for:
+   * - local key/value writes
+   * - WAL-backed persistence
+   * - restart recovery
+   * - sync state inspection
+   * - manual sync ticks
    * - optional transport
    * - optional discovery
-   * - optional node metadata
+   * - node metadata
    *
-   * The SDK client does not force networking. A local-only client can use the
-   * store and sync pipeline without starting transport or discovery.
+   * Internal Softadastra modules such as StoreEngine, SyncEngine,
+   * SyncScheduler, TransportEngine, DiscoveryService, and MetadataService are
+   * hidden behind the SDK implementation.
    */
   class Client
   {
@@ -93,27 +61,27 @@ namespace softadastra::sdk
     using VoidResult = Result<void, Error>;
 
     /**
-     * @brief Result returned by get().
+     * @brief Result returned by value lookup operations.
      */
     using ValueResult = Result<Value, Error>;
 
     /**
-     * @brief Result returned by sync inspection methods.
+     * @brief Result returned by sync state inspection.
      */
-    using SyncStateResult = Result<SyncResult, Error>;
+    using SyncStateResult = Result<SyncState, Error>;
 
     /**
-     * @brief Result returned by tick().
+     * @brief Result returned by sync tick operations.
      */
     using TickStateResult = Result<TickResult, Error>;
 
     /**
-     * @brief Result returned by node_info().
+     * @brief Result returned by node metadata operations.
      */
     using NodeInfoResult = Result<NodeInfo, Error>;
 
     /**
-     * @brief Result returned by peers().
+     * @brief Result returned by peer listing operations.
      */
     using PeersResult = Result<std::vector<Peer>, Error>;
 
@@ -150,10 +118,9 @@ namespace softadastra::sdk
     /**
      * @brief Opens and initializes the SDK client.
      *
-     * This initializes the local store, sync context, sync engine, scheduler,
-     * and optional service objects according to ClientOptions.
+     * This builds the internal Softadastra runtime according to ClientOptions.
      *
-     * @return Result<void, Error>.
+     * @return ok on success, error on failure.
      */
     [[nodiscard]] VoidResult open();
 
@@ -164,36 +131,40 @@ namespace softadastra::sdk
 
     /**
      * @brief Returns true if the client is open.
+     *
+     * @return true if open.
      */
     [[nodiscard]] bool is_open() const noexcept;
 
     /**
-     * @brief Backward-compatible open alias.
+     * @brief Backward-compatible alias for is_open().
+     *
+     * @return true if open.
      */
     [[nodiscard]] bool opened() const noexcept;
 
     /**
      * @brief Stores a value for a key.
      *
-     * The write is submitted to the sync layer. The sync engine applies the
-     * operation to the local store through its SyncContext.
+     * The write is accepted locally through the SDK runtime. Network access is
+     * not required for local correctness.
      *
      * @param key SDK key.
      * @param value SDK value.
-     * @return Result<void, Error>.
+     * @return ok on success, error on failure.
      */
     [[nodiscard]] VoidResult put(
         const Key &key,
         const Value &value);
 
     /**
-     * @brief Stores a string value for a key.
+     * @brief Stores a string value for a string key.
      *
      * Convenience overload for text payloads.
      *
-     * @param key SDK key.
-     * @param value Text value.
-     * @return Result<void, Error>.
+     * @param key Key string.
+     * @param value Value string.
+     * @return ok on success, error on failure.
      */
     [[nodiscard]] VoidResult put(
         std::string key,
@@ -203,7 +174,7 @@ namespace softadastra::sdk
      * @brief Reads a value from the local store.
      *
      * @param key SDK key.
-     * @return Value on success, Error on failure.
+     * @return value on success, error on failure.
      */
     [[nodiscard]] ValueResult get(const Key &key) const;
 
@@ -211,18 +182,15 @@ namespace softadastra::sdk
      * @brief Reads a value from the local store by string key.
      *
      * @param key Key string.
-     * @return Value on success, Error on failure.
+     * @return value on success, error on failure.
      */
     [[nodiscard]] ValueResult get(const std::string &key) const;
 
     /**
      * @brief Removes a value from the local store.
      *
-     * The deletion is submitted to the sync layer. The sync engine applies the
-     * operation to the local store through its SyncContext.
-     *
      * @param key SDK key.
-     * @return Result<void, Error>.
+     * @return ok on success, error on failure.
      */
     [[nodiscard]] VoidResult remove(const Key &key);
 
@@ -230,12 +198,14 @@ namespace softadastra::sdk
      * @brief Removes a value from the local store by string key.
      *
      * @param key Key string.
-     * @return Result<void, Error>.
+     * @return ok on success, error on failure.
      */
     [[nodiscard]] VoidResult remove(const std::string &key);
 
     /**
      * @brief Returns true if the local store contains a key.
+     *
+     * This method returns false when the client is closed.
      *
      * @param key SDK key.
      * @return true if present.
@@ -243,7 +213,9 @@ namespace softadastra::sdk
     [[nodiscard]] bool contains(const Key &key) const;
 
     /**
-     * @brief Returns true if the local store contains a string key.
+     * @brief Returns true if the local store contains a key.
+     *
+     * This method returns false when the client is closed.
      *
      * @param key Key string.
      * @return true if present.
@@ -252,23 +224,28 @@ namespace softadastra::sdk
 
     /**
      * @brief Returns the number of entries in the local store.
+     *
+     * This method returns zero when the client is closed.
+     *
+     * @return Entry count.
      */
     [[nodiscard]] std::size_t size() const noexcept;
 
     /**
      * @brief Returns true if the local store is empty.
+     *
+     * @return true if empty.
      */
     [[nodiscard]] bool empty() const noexcept;
 
     /**
      * @brief Advances the sync pipeline once.
      *
-     * This is deterministic and manual. It retries expired operations,
-     * collects a batch ready for transport, and optionally prunes completed
-     * entries.
+     * This is deterministic and manual. It retries expired operations, collects
+     * a batch ready for transport, and optionally prunes completed entries.
      *
-     * @param prune_completed Remove completed entries after the tick.
-     * @return SDK tick result.
+     * @param prune_completed true to prune completed entries.
+     * @return tick result on success, error on failure.
      */
     [[nodiscard]] TickStateResult tick(
         bool prune_completed = false);
@@ -276,37 +253,37 @@ namespace softadastra::sdk
     /**
      * @brief Returns a compact synchronization state.
      *
-     * @return SDK sync result.
+     * @return sync state on success, error on failure.
      */
     [[nodiscard]] SyncStateResult sync_state() const;
 
     /**
      * @brief Retries expired sync operations.
      *
-     * @return Number of operations requeued.
+     * @return number of retried entries on success, error on failure.
      */
     [[nodiscard]] Result<std::size_t, Error> retry_expired();
 
     /**
      * @brief Prunes completed sync entries.
      *
-     * @return Number of entries removed.
+     * @return number of pruned entries on success, error on failure.
      */
     [[nodiscard]] Result<std::size_t, Error> prune_completed();
 
     /**
      * @brief Prunes failed sync entries.
      *
-     * @return Number of entries removed.
+     * @return number of pruned entries on success, error on failure.
      */
     [[nodiscard]] Result<std::size_t, Error> prune_failed();
 
     /**
      * @brief Starts optional transport support.
      *
-     * Requires ClientOptions::enable_transport to be true.
+     * Requires ClientOptions transport support to be enabled.
      *
-     * @return Result<void, Error>.
+     * @return ok on success, error on failure.
      */
     [[nodiscard]] VoidResult start_transport();
 
@@ -317,31 +294,37 @@ namespace softadastra::sdk
 
     /**
      * @brief Returns true if transport is enabled and running.
+     *
+     * @return true if transport is running.
      */
     [[nodiscard]] bool transport_running() const noexcept;
 
     /**
      * @brief Connects to a peer through transport.
      *
+     * Requires transport support to be enabled.
+     *
      * @param peer Remote peer.
-     * @return Result<void, Error>.
+     * @return ok on success, error on failure.
      */
     [[nodiscard]] VoidResult connect(const Peer &peer);
 
     /**
      * @brief Disconnects from a peer through transport.
      *
+     * Requires transport support to be enabled.
+     *
      * @param peer Remote peer.
-     * @return Result<void, Error>.
+     * @return ok on success, error on failure.
      */
     [[nodiscard]] VoidResult disconnect(const Peer &peer);
 
     /**
      * @brief Starts optional discovery support.
      *
-     * Requires ClientOptions::enable_discovery to be true.
+     * Requires ClientOptions discovery support to be enabled.
      *
-     * @return Result<void, Error>.
+     * @return ok on success, error on failure.
      */
     [[nodiscard]] VoidResult start_discovery();
 
@@ -352,157 +335,45 @@ namespace softadastra::sdk
 
     /**
      * @brief Returns true if discovery is enabled and running.
+     *
+     * @return true if discovery is running.
      */
     [[nodiscard]] bool discovery_running() const noexcept;
 
     /**
      * @brief Returns discovered peers.
      *
-     * @return List of SDK peers.
+     * Requires discovery support to be enabled.
+     *
+     * @return peer list on success, error on failure.
      */
     [[nodiscard]] PeersResult peers() const;
 
     /**
-     * @brief Returns local node metadata as SDK NodeInfo.
+     * @brief Returns local node metadata.
      *
-     * @return SDK node info.
+     * @return node info on success, error on failure.
      */
     [[nodiscard]] NodeInfoResult node_info() const;
 
     /**
-     * @brief Refreshes local node metadata and returns it as SDK NodeInfo.
+     * @brief Refreshes local node metadata and returns it.
      *
-     * @return SDK node info.
+     * @return node info on success, error on failure.
      */
     [[nodiscard]] NodeInfoResult refresh_node_info();
 
     /**
      * @brief Returns the SDK options used by this client.
+     *
+     * @return client options.
      */
     [[nodiscard]] const ClientOptions &options() const noexcept;
 
-    /**
-     * @brief Returns the internal store engine.
-     *
-     * This is exposed for advanced integrations. Most applications should use
-     * the SDK-level put/get/remove methods instead.
-     */
-    [[nodiscard]] store_engine::StoreEngine &store();
-
-    /**
-     * @brief Returns the internal store engine.
-     */
-    [[nodiscard]] const store_engine::StoreEngine &store() const;
-
-    /**
-     * @brief Returns the internal sync engine.
-     *
-     * This is exposed for advanced integrations.
-     */
-    [[nodiscard]] sync_engine::SyncEngine &sync();
-
-    /**
-     * @brief Returns the internal sync engine.
-     */
-    [[nodiscard]] const sync_engine::SyncEngine &sync() const;
-
   private:
-    /**
-     * @brief Ensures the client is open.
-     */
-    [[nodiscard]] VoidResult require_open() const;
+    class Impl;
 
-    /**
-     * @brief Ensures transport is available.
-     */
-    [[nodiscard]] VoidResult require_transport() const;
-
-    /**
-     * @brief Ensures discovery is available.
-     */
-    [[nodiscard]] VoidResult require_discovery() const;
-
-    /**
-     * @brief Ensures metadata is available.
-     */
-    [[nodiscard]] VoidResult require_metadata() const;
-
-    /**
-     * @brief Builds internal runtime objects from options.
-     */
-    void build_runtime();
-
-  private:
-    /**
-     * @brief SDK options used to configure this client.
-     */
-    ClientOptions options_{};
-
-    /**
-     * @brief Local store engine owned by the SDK client.
-     */
-    std::unique_ptr<store_engine::StoreEngine> store_{};
-
-    /**
-     * @brief Sync configuration owned by the SDK client.
-     *
-     * SyncEngine stores references through SyncContext, so this object must
-     * outlive SyncContext, SyncEngine, and SyncScheduler.
-     */
-    std::unique_ptr<sync_core::SyncConfig> sync_config_{};
-
-    /**
-     * @brief Sync runtime context owned by the SDK client.
-     *
-     * SyncEngine keeps a reference to this context, so it must outlive the
-     * sync engine.
-     */
-    std::unique_ptr<sync_core::SyncContext> sync_context_{};
-
-    /**
-     * @brief Synchronization engine owned by the SDK client.
-     */
-    std::unique_ptr<sync_engine::SyncEngine> sync_{};
-
-    /**
-     * @brief Manual synchronization scheduler owned by the SDK client.
-     */
-    std::unique_ptr<sync_scheduler::SyncScheduler> scheduler_{};
-
-    /**
-     * @brief Transport configuration owned by the SDK client.
-     */
-    std::unique_ptr<transport_core::TransportConfig> transport_config_{};
-
-    /**
-     * @brief Transport runtime context owned by the SDK client.
-     */
-    std::unique_ptr<transport_core::TransportContext> transport_context_{};
-
-    /**
-     * @brief TCP transport backend owned by the SDK client.
-     */
-    std::unique_ptr<transport_backend::TcpTransportBackend> transport_backend_{};
-
-    /**
-     * @brief Transport engine owned by the SDK client.
-     */
-    std::unique_ptr<transport_engine::TransportEngine> transport_{};
-
-    /**
-     * @brief Discovery service owned by the SDK client.
-     */
-    std::unique_ptr<discovery_api::DiscoveryService> discovery_{};
-
-    /**
-     * @brief Metadata service owned by the SDK client.
-     */
-    std::unique_ptr<metadata_api::MetadataService> metadata_{};
-
-    /**
-     * @brief True when the SDK client is open.
-     */
-    bool open_{false};
+    std::unique_ptr<Impl> impl_{};
   };
 
 } // namespace softadastra::sdk

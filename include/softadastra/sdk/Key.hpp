@@ -1,11 +1,11 @@
 /**
  *
  *  @file Key.hpp
- *  @author Gaspard Kirira
+ *  @author Softadastra
  *
  *  Copyright 2026, Softadastra.
  *  All rights reserved.
- *  https://github.com/softadastra/sdk-cpp
+ *  https://github.com/softadastra/sdk.git
  *
  *  Licensed under the Apache License, Version 2.0.
  *
@@ -18,33 +18,27 @@
 
 #include <string>
 #include <string_view>
-#include <utility>
-
-#include <softadastra/store/types/Key.hpp>
 
 namespace softadastra::sdk
 {
-  namespace store_types = softadastra::store::types;
-
   /**
    * @brief Public SDK key type.
    *
-   * Key identifies a value stored through the SDK client.
+   * Key identifies a value stored through the Softadastra SDK client.
    *
-   * It intentionally stays string-based because Softadastra Store already uses
-   * stable string keys internally. The SDK wrapper keeps the public API clean
-   * while allowing conversion to the internal store key when needed.
+   * A key is intentionally represented as a string because SDK users should not
+   * depend on internal store key types.
    *
    * Rules:
-   * - A valid key must not be empty.
-   * - Keys are stable and safe to persist.
-   * - Keys are compared lexicographically.
+   * - a valid key must not be empty
+   * - key comparison is value-based
+   * - ordering is lexicographical
    */
   class Key
   {
   public:
     /**
-     * @brief Creates an empty key.
+     * @brief Creates an empty invalid key.
      */
     Key() = default;
 
@@ -53,32 +47,23 @@ namespace softadastra::sdk
      *
      * @param value Key value.
      */
-    explicit Key(std::string value)
-        : value_(std::move(value))
-    {
-    }
+    explicit Key(std::string value);
 
     /**
      * @brief Creates a key from a string view.
      *
      * @param value Key value.
      */
-    explicit Key(std::string_view value)
-        : value_(value)
-    {
-    }
+    explicit Key(std::string_view value);
 
     /**
      * @brief Creates a key from a C string.
      *
-     * Null pointers are converted to an empty key.
+     * A null pointer is converted to an empty key.
      *
      * @param value Key value.
      */
-    explicit Key(const char *value)
-        : value_(value == nullptr ? "" : value)
-    {
-    }
+    explicit Key(const char *value);
 
     /**
      * @brief Creates a key from a string.
@@ -86,10 +71,7 @@ namespace softadastra::sdk
      * @param value Key value.
      * @return SDK key.
      */
-    [[nodiscard]] static Key from(std::string value)
-    {
-      return Key{std::move(value)};
-    }
+    [[nodiscard]] static Key from(std::string value);
 
     /**
      * @brief Creates a key from a string view.
@@ -97,28 +79,14 @@ namespace softadastra::sdk
      * @param value Key value.
      * @return SDK key.
      */
-    [[nodiscard]] static Key from_view(std::string_view value)
-    {
-      return Key{value};
-    }
-
-    /**
-     * @brief Creates a key from an internal Softadastra Store key.
-     *
-     * @param key Internal store key.
-     * @return SDK key.
-     */
-    [[nodiscard]] static Key from_store(const store_types::Key &key);
+    [[nodiscard]] static Key from_view(std::string_view value);
 
     /**
      * @brief Returns the key string.
      *
      * @return Key value.
      */
-    [[nodiscard]] const std::string &str() const noexcept
-    {
-      return value_;
-    }
+    [[nodiscard]] const std::string &str() const noexcept;
 
     /**
      * @brief Returns the key string.
@@ -127,96 +95,74 @@ namespace softadastra::sdk
      *
      * @return Key value.
      */
-    [[nodiscard]] const std::string &value() const noexcept
-    {
-      return value_;
-    }
+    [[nodiscard]] const std::string &value() const noexcept;
 
     /**
-     * @brief Returns true if the key is empty.
+     * @brief Returns true if the key has no value.
      *
-     * @return True if the key has no value.
+     * @return true if the key is empty.
      */
-    [[nodiscard]] bool empty() const noexcept
-    {
-      return value_.empty();
-    }
+    [[nodiscard]] bool empty() const noexcept;
 
     /**
      * @brief Returns true if the key can be used by the SDK.
      *
-     * @return True if the key is not empty.
+     * @return true if the key is not empty.
      */
-    [[nodiscard]] bool is_valid() const noexcept
-    {
-      return !value_.empty();
-    }
+    [[nodiscard]] bool is_valid() const noexcept;
 
     /**
-     * @brief Backward-compatible valid alias.
+     * @brief Backward-compatible alias for is_valid().
      *
-     * @return True if the key is valid.
+     * @return true if the key is valid.
      */
-    [[nodiscard]] bool valid() const noexcept
-    {
-      return is_valid();
-    }
+    [[nodiscard]] bool valid() const noexcept;
 
     /**
      * @brief Clears the key.
      */
-    void clear() noexcept
-    {
-      value_.clear();
-    }
-
-    /**
-     * @brief Converts this SDK key to an internal Softadastra Store key.
-     *
-     * @return Internal store key.
-     */
-    [[nodiscard]] store_types::Key to_store() const;
+    void clear() noexcept;
 
     /**
      * @brief Compares two keys for equality.
      *
-     * @param a Left key.
-     * @param b Right key.
-     * @return True if both keys have the same value.
+     * @param left Left key.
+     * @param right Right key.
+     * @return true if both keys contain the same value.
      */
     [[nodiscard]] friend bool operator==(
-        const Key &a,
-        const Key &b) noexcept
+        const Key &left,
+        const Key &right) noexcept
     {
-      return a.value_ == b.value_;
+      return left.value_ == right.value_;
     }
 
     /**
      * @brief Compares two keys for inequality.
      *
-     * @param a Left key.
-     * @param b Right key.
-     * @return True if keys are different.
+     * @param left Left key.
+     * @param right Right key.
+     * @return true if keys are different.
      */
     [[nodiscard]] friend bool operator!=(
-        const Key &a,
-        const Key &b) noexcept
+        const Key &left,
+        const Key &right) noexcept
     {
-      return !(a == b);
+      return !(left == right);
     }
 
     /**
      * @brief Orders keys lexicographically.
      *
-     * @param a Left key.
-     * @param b Right key.
-     * @return True if a is lexicographically smaller than b.
+     * @param left Left key.
+     * @param right Right key.
+     * @return true if left is lexicographically smaller than right.
      */
     [[nodiscard]] friend bool operator<(
-        const Key &a,
-        const Key &b) noexcept
+        const Key &left,
+        const Key &right) noexcept
     {
-      return a.value_ < b.value_;
+      return left.value_ < right.value_;
     }
 
   private:

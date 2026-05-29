@@ -6,4 +6,8 @@ find_dependency(softadastra CONFIG)
 
 include("${CMAKE_CURRENT_LIST_DIR}/sdk-cppTargets.cmake")
 
+if(TARGET sdk-cpp::sdk-cpp AND NOT TARGET softadastra::sdk)
+    add_library(softadastra::sdk ALIAS sdk-cpp::sdk-cpp)
+endif()
+
 check_required_components(sdk-cpp)

@@ -1,11 +1,11 @@
 /**
  *
  *  @file Error.hpp
- *  @author Gaspard Kirira
+ *  @author Softadastra
  *
  *  Copyright 2026, Softadastra.
  *  All rights reserved.
- *  https://github.com/softadastra/sdk-cpp
+ *  https://github.com/softadastra/sdk.git
  *
  *  Licensed under the Apache License, Version 2.0.
  *
@@ -19,30 +19,25 @@
 #include <string>
 #include <string_view>
 
-#include <softadastra/core/errors/Error.hpp>
-#include <softadastra/core/errors/ErrorCode.hpp>
-#include <softadastra/core/errors/ErrorContext.hpp>
-
 namespace softadastra::sdk
 {
-  namespace core_errors = softadastra::core::errors;
-
   /**
    * @brief Public SDK error object.
    *
-   * Error is the developer-facing error type returned by SDK operations.
+   * Error is the stable developer-facing error type returned by SDK
+   * operations.
    *
-   * It wraps the stable Softadastra core error model while keeping the SDK API
-   * small, clear, and independent from internal module details.
+   * The SDK does not expose internal Softadastra module errors directly.
+   * Internal errors are converted to this public type before they reach SDK
+   * users.
    */
   class Error
   {
   public:
     /**
-     * @brief SDK-level error code.
+     * @brief Stable SDK error code.
      *
-     * This enum gives the SDK a stable public error surface while allowing
-     * internal Softadastra modules to evolve independently.
+     * These codes form the public error surface of the SDK.
      */
     enum class Code
     {
@@ -69,8 +64,8 @@ namespace softadastra::sdk
     /**
      * @brief Creates an SDK error.
      *
-     * @param code Machine-readable SDK error code.
-     * @param message Developer-facing diagnostic message.
+     * @param code Stable SDK error code.
+     * @param message Developer-facing error message.
      * @param context Optional diagnostic context.
      */
     Error(
@@ -79,17 +74,17 @@ namespace softadastra::sdk
         std::string context = {});
 
     /**
-     * @brief Creates an empty success-like error.
+     * @brief Creates a success-like SDK error.
      *
-     * @return Success-like SDK error.
+     * @return Error with Code::None.
      */
     [[nodiscard]] static Error none();
 
     /**
-     * @brief Creates an SDK error from SDK fields.
+     * @brief Creates an SDK error from explicit fields.
      *
-     * @param code Machine-readable SDK error code.
-     * @param message Developer-facing diagnostic message.
+     * @param code Stable SDK error code.
+     * @param message Developer-facing error message.
      * @param context Optional diagnostic context.
      * @return SDK error.
      */
@@ -99,9 +94,20 @@ namespace softadastra::sdk
         std::string context = {});
 
     /**
+     * @brief Creates an unknown error.
+     *
+     * @param message Developer-facing error message.
+     * @param context Optional diagnostic context.
+     * @return SDK error.
+     */
+    [[nodiscard]] static Error unknown(
+        std::string message,
+        std::string context = {});
+
+    /**
      * @brief Creates an invalid argument error.
      *
-     * @param message Developer-facing diagnostic message.
+     * @param message Developer-facing error message.
      * @param context Optional diagnostic context.
      * @return SDK error.
      */
@@ -112,7 +118,7 @@ namespace softadastra::sdk
     /**
      * @brief Creates an invalid state error.
      *
-     * @param message Developer-facing diagnostic message.
+     * @param message Developer-facing error message.
      * @param context Optional diagnostic context.
      * @return SDK error.
      */
@@ -123,7 +129,7 @@ namespace softadastra::sdk
     /**
      * @brief Creates a not found error.
      *
-     * @param message Developer-facing diagnostic message.
+     * @param message Developer-facing error message.
      * @param context Optional diagnostic context.
      * @return SDK error.
      */
@@ -132,9 +138,20 @@ namespace softadastra::sdk
         std::string context = {});
 
     /**
+     * @brief Creates an already exists error.
+     *
+     * @param message Developer-facing error message.
+     * @param context Optional diagnostic context.
+     * @return SDK error.
+     */
+    [[nodiscard]] static Error already_exists(
+        std::string message,
+        std::string context = {});
+
+    /**
      * @brief Creates an I/O error.
      *
-     * @param message Developer-facing diagnostic message.
+     * @param message Developer-facing error message.
      * @param context Optional diagnostic context.
      * @return SDK error.
      */
@@ -143,9 +160,20 @@ namespace softadastra::sdk
         std::string context = {});
 
     /**
+     * @brief Creates a store error.
+     *
+     * @param message Developer-facing error message.
+     * @param context Optional diagnostic context.
+     * @return SDK error.
+     */
+    [[nodiscard]] static Error store_error(
+        std::string message,
+        std::string context = {});
+
+    /**
      * @brief Creates a sync error.
      *
-     * @param message Developer-facing diagnostic message.
+     * @param message Developer-facing error message.
      * @param context Optional diagnostic context.
      * @return SDK error.
      */
@@ -156,7 +184,7 @@ namespace softadastra::sdk
     /**
      * @brief Creates a transport error.
      *
-     * @param message Developer-facing diagnostic message.
+     * @param message Developer-facing error message.
      * @param context Optional diagnostic context.
      * @return SDK error.
      */
@@ -167,7 +195,7 @@ namespace softadastra::sdk
     /**
      * @brief Creates a discovery error.
      *
-     * @param message Developer-facing diagnostic message.
+     * @param message Developer-facing error message.
      * @param context Optional diagnostic context.
      * @return SDK error.
      */
@@ -178,7 +206,7 @@ namespace softadastra::sdk
     /**
      * @brief Creates a metadata error.
      *
-     * @param message Developer-facing diagnostic message.
+     * @param message Developer-facing error message.
      * @param context Optional diagnostic context.
      * @return SDK error.
      */
@@ -189,7 +217,7 @@ namespace softadastra::sdk
     /**
      * @brief Creates an internal SDK error.
      *
-     * @param message Developer-facing diagnostic message.
+     * @param message Developer-facing error message.
      * @param context Optional diagnostic context.
      * @return SDK error.
      */
@@ -198,65 +226,49 @@ namespace softadastra::sdk
         std::string context = {});
 
     /**
-     * @brief Creates an SDK error from a core Softadastra error.
-     *
-     * @param error Core Softadastra error.
-     * @return SDK error.
-     */
-    [[nodiscard]] static Error from_core(
-        const core_errors::Error &error);
-
-    /**
-     * @brief Converts the SDK error back to a core Softadastra error.
-     *
-     * @return Core Softadastra error.
-     */
-    [[nodiscard]] core_errors::Error to_core() const;
-
-    /**
-     * @brief Returns the machine-readable SDK error code.
+     * @brief Returns the stable SDK error code.
      *
      * @return SDK error code.
      */
     [[nodiscard]] Code code() const noexcept;
 
     /**
-     * @brief Returns the developer-facing diagnostic message.
+     * @brief Returns the developer-facing error message.
      *
      * @return Error message.
      */
     [[nodiscard]] const std::string &message() const noexcept;
 
     /**
-     * @brief Returns optional diagnostic context.
+     * @brief Returns the optional diagnostic context.
      *
      * @return Error context.
      */
     [[nodiscard]] const std::string &context() const noexcept;
 
     /**
-     * @brief Returns true when diagnostic context is available.
+     * @brief Returns true when this object represents success.
      *
-     * @return True if context is not empty.
-     */
-    [[nodiscard]] bool has_context() const noexcept;
-
-    /**
-     * @brief Returns true if this object represents success.
-     *
-     * @return True if the error code is Code::None.
+     * @return true if the error code is Code::None.
      */
     [[nodiscard]] bool ok() const noexcept;
 
     /**
-     * @brief Returns true if this object represents an error.
+     * @brief Returns true when this object represents an error.
      *
-     * @return True if the error code is not Code::None.
+     * @return true if the error code is not Code::None.
      */
     [[nodiscard]] bool has_error() const noexcept;
 
     /**
-     * @brief Clears the error and resets it to success.
+     * @brief Returns true when diagnostic context is available.
+     *
+     * @return true if the context string is not empty.
+     */
+    [[nodiscard]] bool has_context() const noexcept;
+
+    /**
+     * @brief Clears the error and resets it to Code::None.
      */
     void clear() noexcept;
 
@@ -264,35 +276,46 @@ namespace softadastra::sdk
      * @brief Returns the stable string representation of an SDK error code.
      *
      * @param code SDK error code.
-     * @return Stable string representation.
+     * @return Stable error code string.
      */
     [[nodiscard]] static std::string_view to_string(Code code) noexcept;
 
     /**
-     * @brief Returns the stable string representation of the current error code.
+     * @brief Returns the stable string representation of this error code.
      *
-     * @return Stable string representation.
+     * @return Stable error code string.
      */
     [[nodiscard]] std::string_view code_string() const noexcept;
 
-  private:
     /**
-     * @brief Converts a core Softadastra error code to an SDK error code.
+     * @brief Compares two errors for equality.
      *
-     * @param code Core Softadastra error code.
-     * @return SDK error code.
+     * @param left Left error.
+     * @param right Right error.
+     * @return true if both errors contain the same code, message, and context.
      */
-    [[nodiscard]] static Code from_core_code(
-        core_errors::ErrorCode code) noexcept;
+    [[nodiscard]] friend bool operator==(
+        const Error &left,
+        const Error &right) noexcept
+    {
+      return left.code_ == right.code_ &&
+             left.message_ == right.message_ &&
+             left.context_ == right.context_;
+    }
 
     /**
-     * @brief Converts an SDK error code to a core Softadastra error code.
+     * @brief Compares two errors for inequality.
      *
-     * @param code SDK error code.
-     * @return Core Softadastra error code.
+     * @param left Left error.
+     * @param right Right error.
+     * @return true if the errors are different.
      */
-    [[nodiscard]] static core_errors::ErrorCode to_core_code(
-        Code code) noexcept;
+    [[nodiscard]] friend bool operator!=(
+        const Error &left,
+        const Error &right) noexcept
+    {
+      return !(left == right);
+    }
 
   private:
     Code code_{Code::None};

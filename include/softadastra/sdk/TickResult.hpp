@@ -1,11 +1,11 @@
 /**
  *
  *  @file TickResult.hpp
- *  @author Gaspard Kirira
+ *  @author Softadastra
  *
  *  Copyright 2026, Softadastra.
  *  All rights reserved.
- *  https://github.com/softadastra/sdk-cpp
+ *  https://github.com/softadastra/sdk.git
  *
  *  Licensed under the Apache License, Version 2.0.
  *
@@ -18,40 +18,25 @@
 
 #include <cstddef>
 
-#include <softadastra/sync/scheduler/SyncScheduler.hpp>
-
 namespace softadastra::sdk
 {
-  namespace sync_scheduler = softadastra::sync::scheduler;
-
   /**
    * @brief Public SDK result of one synchronization tick.
    *
    * TickResult describes what happened when the SDK manually advanced the
-   * sync pipeline once.
+   * synchronization pipeline once.
    *
-   * It is intentionally smaller than the internal SyncScheduler::TickResult:
-   * - it exposes counters useful to SDK users
-   * - it hides internal SyncEnvelope batches
-   * - transport remains behind the SDK client facade
+   * It intentionally exposes only stable counters:
+   * - retry work
+   * - pruning work
+   * - outbound batch production
+   *
+   * Internal sync envelopes, queues, and scheduler records remain hidden inside
+   * the SDK implementation.
    */
-  struct TickResult
+  class TickResult
   {
-    /**
-     * @brief Number of expired operations requeued for retry.
-     */
-    std::size_t retried_count{0};
-
-    /**
-     * @brief Number of completed entries removed from the outbox.
-     */
-    std::size_t pruned_count{0};
-
-    /**
-     * @brief Number of sync envelopes produced for sending.
-     */
-    std::size_t batch_size{0};
-
+  public:
     /**
      * @brief Creates an empty tick result.
      */
@@ -60,78 +45,133 @@ namespace softadastra::sdk
     /**
      * @brief Creates a tick result from explicit counters.
      *
-     * @param retried Number of retried operations.
-     * @param pruned Number of pruned entries.
-     * @param batch Number of produced outbound envelopes.
+     * @param retried_count Number of expired operations requeued for retry.
+     * @param pruned_count Number of completed or failed entries pruned.
+     * @param batch_size Number of outbound sync items produced.
      */
     TickResult(
-        std::size_t retried,
-        std::size_t pruned,
-        std::size_t batch)
-        : retried_count(retried),
-          pruned_count(pruned),
-          batch_size(batch)
-    {
-    }
+        std::size_t retried_count,
+        std::size_t pruned_count,
+        std::size_t batch_size);
 
     /**
-     * @brief Creates an SDK tick result from internal scheduler output.
+     * @brief Returns the number of expired operations requeued for retry.
      *
-     * @param result Internal scheduler tick result.
-     * @return SDK tick result.
+     * @return Retried operation count.
      */
-    [[nodiscard]] static TickResult from_scheduler(
-        const sync_scheduler::SyncScheduler::TickResult &result) noexcept
-    {
-      return TickResult{
-          result.retried_count,
-          result.pruned_count,
-          result.batch_size()};
-    }
+    [[nodiscard]] std::size_t retried_count() const noexcept;
+
+    /**
+     * @brief Returns the number of completed or failed entries pruned.
+     *
+     * @return Pruned entry count.
+     */
+    [[nodiscard]] std::size_t pruned_count() const noexcept;
+
+    /**
+     * @brief Returns the number of outbound sync items produced.
+     *
+     * @return Produced batch size.
+     */
+    [[nodiscard]] std::size_t batch_size() const noexcept;
+
+    /**
+     * @brief Sets the number of expired operations requeued for retry.
+     *
+     * @param value Retried operation count.
+     */
+    void set_retried_count(std::size_t value) noexcept;
+
+    /**
+     * @brief Sets the number of completed or failed entries pruned.
+     *
+     * @param value Pruned entry count.
+     */
+    void set_pruned_count(std::size_t value) noexcept;
+
+    /**
+     * @brief Sets the number of outbound sync items produced.
+     *
+     * @param value Produced batch size.
+     */
+    void set_batch_size(std::size_t value) noexcept;
 
     /**
      * @brief Returns true if the tick produced any work.
+     *
+     * Work means at least one retry, prune, or outbound batch item.
+     *
+     * @return true if the tick produced work.
      */
-    [[nodiscard]] bool has_work() const noexcept
-    {
-      return retried_count > 0 ||
-             pruned_count > 0 ||
-             batch_size > 0;
-    }
+    [[nodiscard]] bool has_work() const noexcept;
 
     /**
      * @brief Returns true if retry work happened.
+     *
+     * @return true if retried_count is greater than zero.
      */
-    [[nodiscard]] bool retried() const noexcept
-    {
-      return retried_count > 0;
-    }
+    [[nodiscard]] bool retried() const noexcept;
 
     /**
-     * @brief Returns true if pruning happened.
+     * @brief Returns true if pruning work happened.
+     *
+     * @return true if pruned_count is greater than zero.
      */
-    [[nodiscard]] bool pruned() const noexcept
-    {
-      return pruned_count > 0;
-    }
+    [[nodiscard]] bool pruned() const noexcept;
 
     /**
      * @brief Returns true if outbound sync work was produced.
+     *
+     * @return true if batch_size is greater than zero.
      */
-    [[nodiscard]] bool produced_batch() const noexcept
-    {
-      return batch_size > 0;
-    }
+    [[nodiscard]] bool produced_batch() const noexcept;
+
+    /**
+     * @brief Returns true if all counters are zero.
+     *
+     * @return true if the tick result is empty.
+     */
+    [[nodiscard]] bool empty() const noexcept;
 
     /**
      * @brief Clears all counters.
      */
-    void clear() noexcept
+    void clear() noexcept;
+
+    /**
+     * @brief Compares two tick results for equality.
+     *
+     * @param left Left tick result.
+     * @param right Right tick result.
+     * @return true if both results contain the same counters.
+     */
+    [[nodiscard]] friend bool operator==(
+        const TickResult &left,
+        const TickResult &right) noexcept
     {
-      retried_count = 0;
-      pruned_count = 0;
-      batch_size = 0;
+      return left.retried_count_ == right.retried_count_ &&
+             left.pruned_count_ == right.pruned_count_ &&
+             left.batch_size_ == right.batch_size_;
     }
+
+    /**
+     * @brief Compares two tick results for inequality.
+     *
+     * @param left Left tick result.
+     * @param right Right tick result.
+     * @return true if the results are different.
+     */
+    [[nodiscard]] friend bool operator!=(
+        const TickResult &left,
+        const TickResult &right) noexcept
+    {
+      return !(left == right);
+    }
+
+  private:
+    std::size_t retried_count_{0};
+    std::size_t pruned_count_{0};
+    std::size_t batch_size_{0};
   };
 
 } // namespace softadastra::sdk

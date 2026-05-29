@@ -1,21 +1,47 @@
-/*
- * TransportConversions.cpp
+/**
+ *
+ *  @file TransportConversions.cpp
+ *  @author Softadastra
+ *
+ *  Copyright 2026, Softadastra.
+ *  All rights reserved.
+ *  https://github.com/softadastra/sdk.git
+ *
+ *  Licensed under the Apache License, Version 2.0.
+ *
+ *  Softadastra C++ SDK
+ *
  */
 
-#include <softadastra/sdk/Peer.hpp>
+#include "TransportConversions.hpp"
+#include <softadastra/sdk/ClientOptions.hpp>
 
-/*
- * Transport conversions are implemented inline in Peer.hpp:
- *
- * - Peer::from_transport(...)
- * - Peer::to_transport()
- *
- * Reason:
- * - Peer is a small SDK value object
- * - conversion to transport::core::PeerInfo is part of its public purpose
- * - keeping the conversion close to the type makes usage clearer
- *
- * This translation unit is intentionally kept so the conversion layer has a
- * stable file layout and can grow later when the SDK exposes richer transport
- * helpers.
- */
+namespace softadastra::sdk::internal
+{
+  softadastra::transport::core::TransportConfig to_transport_config(
+      const ClientOptions &options)
+  {
+    return softadastra::transport::core::TransportConfig{
+        options.transport_host(),
+        options.transport_port()};
+  }
+
+  softadastra::transport::core::PeerInfo to_transport_peer(
+      const Peer &peer)
+  {
+    return softadastra::transport::core::PeerInfo{
+        peer.node_id(),
+        peer.host(),
+        peer.port()};
+  }
+
+  Peer from_transport_peer(
+      const softadastra::transport::core::PeerInfo &peer)
+  {
+    return Peer{
+        peer.node_id,
+        peer.host,
+        peer.port};
+  }
+
+} // namespace softadastra::sdk::internal

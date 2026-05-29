@@ -1,498 +1,617 @@
 # Local Store
 
-The Softadastra C++ SDK exposes a simple local key-value API through `softadastra::sdk::Client`.
+The local store is the simplest part of the Softadastra C++ SDK.
+It lets an application write, read, remove, and inspect values locally through `softadastra::sdk::Client`.
+The important rule is:
 
-The local store is the first layer of the SDK. It lets an application write, read, remove, and inspect local data without manually using the internal `store`, `wal`, or `sync` modules.
-
-## Goal
-
-The local store API should feel simple:
-
-```cpp
-client.put("profile/name", "Ada");
-auto value = client.get("profile/name");
-client.remove("profile/name");
+```txt
+local writes do not require the network
 ```
 
-Internally, the SDK can use `softadastra::store`, `softadastra::wal`, and `softadastra::sync` — but the user of the SDK should not need to wire these modules manually.
+A Softadastra application can accept data locally even when transport and discovery are disabled.
 
-## Main types
+## Header
+
+Use the umbrella header:
 
 ```cpp
 #include <softadastra/sdk.hpp>
 ```
 
-Important types:
-
-- `softadastra::sdk::Client`
-- `softadastra::sdk::ClientOptions`
-- `softadastra::sdk::Key`
-- `softadastra::sdk::Value`
-- `softadastra::sdk::Result`
-- `softadastra::sdk::Error`
-
-## Creating a memory-only store
-
-Use `ClientOptions::memory_only()` when you do not want WAL persistence.
+Or include the store-related SDK types directly:
 
 ```cpp
+#include <softadastra/sdk/Client.hpp>
+#include <softadastra/sdk/ClientOptions.hpp>
+#include <softadastra/sdk/Key.hpp>
+#include <softadastra/sdk/Value.hpp>
+```
+
+## Basic store example
+
+```cpp
+#include <softadastra/sdk.hpp>
+
 #include <iostream>
-#include <softadastra/sdk.hpp>
 
 int main()
 {
-    using namespace softadastra::sdk;
+  using namespace softadastra::sdk;
 
-    ClientOptions options = ClientOptions::memory_only("node-memory");
+  Client client{
+      ClientOptions::memory_only("local-store-node")};
 
-    Client client{options};
+  const auto opened =
+      client.open();
 
-    auto open_result = client.open();
+  if (opened.is_err())
+  {
+    std::cerr << opened.error().code_string()
+              << ": "
+              << opened.error().message()
+              << "\n";
 
-    if (open_result.is_err())
-    {
-        std::cerr << open_result.error().message() << "\n";
-        return 1;
-    }
+    return 1;
+  }
 
-    client.put("app/name", "Softadastra SDK");
+  const auto stored =
+      client.put("hello", "world");
 
-    auto value = client.get("app/name");
+  if (stored.is_err())
+  {
+    std::cerr << stored.error().code_string()
+              << ": "
+              << stored.error().message()
+              << "\n";
 
-    if (value.is_ok())
-    {
-        std::cout << value.value().to_string() << "\n";
-    }
+    return 1;
+  }
 
-    client.close();
+  const auto value =
+      client.get("hello");
 
-    return 0;
+  if (value.is_ok())
+  {
+    std::cout << value.value().to_string() << "\n";
+  }
+
+  client.close();
+
+  return 0;
 }
 ```
 
-Use memory-only mode for: tests, examples, temporary local state, and demos without persistence.
+Expected output:
 
-## Creating a persistent store
+```txt
+world
+```
 
-Use `ClientOptions::persistent()` when local writes must be backed by WAL persistence.
+## Store operations
+
+The SDK exposes these local store operations:
 
 ```cpp
-#include <iostream>
-#include <softadastra/sdk.hpp>
+client.put("key", "value");
+client.get("key");
+client.remove("key");
+client.contains("key");
+client.size();
+client.empty();
+```
 
-int main()
+These methods operate on the local store through the SDK client.
+
+## Opening the client first
+
+A client must be opened before store operations are used.
+
+```cpp
+Client client{
+    ClientOptions::memory_only("node-1")};
+
+const auto opened =
+    client.open();
+
+if (opened.is_err())
 {
-    using namespace softadastra::sdk;
-
-    ClientOptions options = ClientOptions::persistent(
-        "node-persistent",
-        "data/sdk-store.wal");
-
-    Client client{options};
-
-    auto open_result = client.open();
-
-    if (open_result.is_err())
-    {
-        std::cerr << open_result.error().message() << "\n";
-        return 1;
-    }
-
-    auto put_result = client.put("settings/theme", "dark");
-
-    if (put_result.is_err())
-    {
-        std::cerr << put_result.error().message() << "\n";
-        return 1;
-    }
-
-    auto value_result = client.get("settings/theme");
-
-    if (value_result.is_ok())
-    {
-        std::cout << value_result.value().to_string() << "\n";
-    }
-
-    client.close();
-
-    return 0;
+  return 1;
 }
 ```
 
-Persistent mode is useful for: offline-first applications, durable local writes, recovery after restart, and sync pipelines backed by WAL.
-
-## Opening the client
-
-The client must be opened before store operations.
+Calling `put`, `get`, or `remove` before `open()` returns an `InvalidState` error.
 
 ```cpp
-Client client{options};
+Client client;
 
-auto result = client.open();
+const auto result =
+    client.put("name", "Softadastra");
 
 if (result.is_err())
 {
-    std::cerr << result.error().message() << "\n";
-    return 1;
+  // Error::Code::InvalidState
 }
-
-if (client.is_open())
-{
-    // safe to use
-}
-
-// Backward-compatible alias
-client.opened();
 ```
-
-## Closing the client
-
-```cpp
-client.close();
-```
-
-> The destructor also closes the client, but explicit `close()` is better in examples and tests.
 
 ## Writing values
 
+Use `put()` to write a key/value pair.
+
 ```cpp
-// String shorthand
-auto result = client.put("profile/name", "Ada");
+const auto result =
+    client.put("name", "Softadastra");
 
 if (result.is_err())
 {
-    std::cerr << result.error().message() << "\n";
+  std::cerr << result.error().message() << "\n";
 }
 ```
 
-### Writing with SDK value objects
+The key must not be empty.
 
 ```cpp
-Key   key{"profile/name"};
-Value value = Value::from_string("Ada");
+const auto result =
+    client.put("", "value");
 
-auto result = client.put(key, value);
-```
-
-### Binary values
-
-`Value` is binary-safe.
-
-```cpp
-Value value = Value::from_bytes({
-    static_cast<unsigned char>(0x01),
-    static_cast<unsigned char>(0x02),
-    static_cast<unsigned char>(0x03),
-});
-
-client.put(Key{"binary/value"}, value);
-
-// Read it back
-auto result = client.get("binary/value");
-
-if (result.is_ok())
-{
-    const auto &bytes = result.value().bytes();
-    std::cout << "size: " << bytes.size() << "\n";
-}
+// result.error().code() == Error::Code::InvalidArgument
 ```
 
 ## Reading values
 
-`get()` returns `Result<Value, Error>`. The caller must handle both success and error.
+Use `get()` to read a value from the local store.
 
 ```cpp
-auto result = client.get("profile/name");
+const auto value =
+    client.get("name");
 
-if (result.is_ok())
+if (value.is_ok())
 {
-    std::cout << result.value().to_string() << "\n";
-}
-else
-{
-    std::cerr << result.error().message() << "\n";
+  std::cout << value.value().to_string() << "\n";
 }
 ```
 
-### Missing keys
-
-A missing key returns an error result. Missing keys normally map to `not_found`.
+If the key does not exist, the SDK returns `Error::Code::NotFound`.
 
 ```cpp
-auto result = client.get("missing/key");
+const auto value =
+    client.get("missing");
 
-if (result.is_err())
+if (value.is_err())
 {
-    std::cout << result.error().code_string()
-              << ": "
-              << result.error().message()
-              << "\n";
-}
-```
-
-## Checking if a key exists
-
-```cpp
-if (client.contains("profile/name"))
-{
-    std::cout << "profile exists\n";
-}
-
-// With a Key object
-Key key{"profile/name"};
-
-if (client.contains(key))
-{
-    std::cout << "profile exists\n";
+  // value.error().code() == Error::Code::NotFound
 }
 ```
 
 ## Removing values
 
-```cpp
-auto result = client.remove("profile/name");
+Use `remove()` to delete a key from the local store.
 
-if (result.is_err())
+```cpp
+const auto removed =
+    client.remove("name");
+
+if (removed.is_err())
 {
-    std::cerr << result.error().message() << "\n";
+  std::cerr << removed.error().message() << "\n";
 }
 ```
 
-> A remove operation should be idempotent when possible. For the current SDK, reading after remove must return an error.
+Removing a missing key is allowed.
 
-## Store size
+The operation is still submitted to the local runtime as a local remove operation.
+
+## Checking if a key exists
+
+Use `contains()`:
 
 ```cpp
-std::cout << client.size() << "\n";
+if (client.contains("name"))
+{
+  std::cout << "name exists\n";
+}
+```
 
+`contains()` returns `false` when:
+
+```txt
+the client is closed
+the key is empty
+the key does not exist
+```
+
+## Counting entries
+
+Use `size()`:
+
+```cpp
+const std::size_t count =
+    client.size();
+```
+
+Use `empty()`:
+
+```cpp
 if (client.empty())
 {
-    std::cout << "store is empty\n";
+  std::cout << "store is empty\n";
 }
 ```
 
-## Error handling
+When the client is closed:
 
-| Return type | Used by |
-|-------------|---------|
-| `Result<void, Error>` | `open()`, `put()`, `remove()`, `start_transport()`, `start_discovery()` |
-| `Result<Value, Error>` | `get()` |
+```txt
+size()  returns 0
+empty() returns true
+```
+
+## Using Key and Value
+
+The string overloads are convenient:
 
 ```cpp
-auto result = client.put("key", "value");
+client.put("language", "C++");
+```
 
-if (result.is_err())
+For explicit SDK types, use `Key` and `Value`:
+
+```cpp
+Key key{"profile/name"};
+Value value{"Ada"};
+
+const auto stored =
+    client.put(key, value);
+```
+
+Then read it back:
+
+```cpp
+const auto result =
+    client.get(key);
+
+if (result.is_ok())
 {
-    const auto &error = result.error();
+  std::cout << result.value().to_string() << "\n";
+}
+```
 
-    std::cerr << error.code_string()
-              << ": "
-              << error.message()
+## Key rules
+
+A `Key` is a stable string-based identifier.
+
+```cpp
+Key key{"profile/name"};
+```
+
+A valid key must not be empty:
+
+```cpp
+Key empty_key{};
+
+if (!empty_key.is_valid())
+{
+  // invalid key
+}
+```
+
+Useful methods:
+
+```cpp
+key.str();
+key.value();
+key.empty();
+key.is_valid();
+key.clear();
+```
+
+## Value rules
+
+A `Value` is binary-safe.
+
+It stores raw bytes.
+
+```cpp
+Value value{"hello"};
+```
+
+Text is stored as bytes:
+
+```cpp
+Value text =
+    Value::from_string("Softadastra");
+```
+
+Binary data is supported:
+
+```cpp
+Value binary =
+    Value::from_bytes({
+        static_cast<std::uint8_t>(0x01),
+        static_cast<std::uint8_t>(0x02),
+        static_cast<std::uint8_t>(0x03)});
+```
+
+Useful methods:
+
+```cpp
+value.bytes();
+value.data();
+value.span();
+value.size();
+value.empty();
+value.to_string();
+value.clear();
+```
+
+`to_string()` does not validate UTF-8. It simply creates a `std::string` from the stored bytes.
+
+## Empty values
+
+Empty values are allowed.
+
+```cpp
+Value empty_value;
+
+client.put("empty", empty_value);
+```
+
+An empty value is different from a missing key.
+
+```txt
+empty value = key exists, value has zero bytes
+missing key = key does not exist
+```
+
+## Binary-safe example
+
+```cpp
+#include <softadastra/sdk.hpp>
+
+#include <cstdint>
+#include <iostream>
+
+int main()
+{
+  using namespace softadastra::sdk;
+
+  Client client{
+      ClientOptions::memory_only("binary-node")};
+
+  if (client.open().is_err())
+  {
+    return 1;
+  }
+
+  Value value{
+      Value::Container{
+          static_cast<std::uint8_t>('a'),
+          static_cast<std::uint8_t>(0),
+          static_cast<std::uint8_t>('b')}};
+
+  client.put(Key{"binary"}, value);
+
+  const auto result =
+      client.get("binary");
+
+  if (result.is_ok())
+  {
+    std::cout << "size: "
+              << result.value().size()
               << "\n";
+  }
+
+  client.close();
+
+  return 0;
 }
 ```
 
-### Invalid keys
+Expected output:
 
-Empty keys are rejected before reaching the internal store engine.
+```txt
+size: 3
+```
+
+## Overwriting values
+
+Calling `put()` on an existing key replaces the previous value.
 
 ```cpp
-auto result = client.put("", "value");
+client.put("name", "first");
+client.put("name", "second");
 
-if (result.is_err())
+const auto value =
+    client.get("name");
+
+// value == "second"
+```
+
+## Local-first behavior
+
+A local store write does not wait for a remote server.
+
+```cpp
+client.put("message", "hello");
+```
+
+This operation is accepted locally first.
+
+In persistent mode, the write is also backed by the local WAL.
+
+In both modes, the write is submitted to the sync pipeline so it can be synchronized later when peers are available.
+
+## Memory-only store
+
+Memory-only mode is useful for examples and tests:
+
+```cpp
+Client client{
+    ClientOptions::memory_only("node-memory")};
+```
+
+In memory-only mode:
+
+```txt
+writes are local
+writes are not persisted to a WAL file
+data disappears after close/restart
+sync state can still track local operations
+```
+
+## Persistent store
+
+Persistent mode uses a WAL path:
+
+```cpp
+Client client{
+    ClientOptions::persistent(
+        "node-persistent",
+        "data/sdk-store.wal")};
+```
+
+In persistent mode:
+
+```txt
+writes are local
+writes are persisted through the WAL
+data can be recovered after restart
+sync state can still track local operations
+```
+
+## Restart recovery example
+
+```cpp
+#include <softadastra/sdk.hpp>
+
+#include <iostream>
+#include <string>
+
+int main()
 {
-    std::cerr << result.error().message() << "\n";
+  using namespace softadastra::sdk;
+
+  const std::string wal_path =
+      "data/local-store-recovery.wal";
+
+  {
+    Client writer{
+        ClientOptions::persistent(
+            "writer-node",
+            wal_path)};
+
+    if (writer.open().is_err())
+    {
+      return 1;
+    }
+
+    writer.put("status", "saved");
+    writer.close();
+  }
+
+  {
+    Client reader{
+        ClientOptions::persistent(
+            "reader-node",
+            wal_path)};
+
+    if (reader.open().is_err())
+    {
+      return 1;
+    }
+
+    const auto status =
+        reader.get("status");
+
+    if (status.is_ok())
+    {
+      std::cout << status.value().to_string() << "\n";
+    }
+
+    reader.close();
+  }
+
+  return 0;
 }
 ```
 
-### Operations while closed
+Expected output:
 
-Store operations fail when the client is closed.
+```txt
+saved
+```
+
+## Error behavior
+
+Common local store errors:
+
+| Situation              | Error code                                                |
+| ---------------------- | --------------------------------------------------------- |
+| Client is closed       | `Error::Code::InvalidState`                               |
+| Key is empty           | `Error::Code::InvalidArgument`                            |
+| Key does not exist     | `Error::Code::NotFound`                                   |
+| Internal store failure | `Error::Code::StoreError` or `Error::Code::InternalError` |
+
+Example:
 
 ```cpp
-Client client;
+const auto value =
+    client.get("missing");
 
-auto result = client.put("key", "value");
-
-if (result.is_err())
+if (value.is_err())
 {
-    std::cout << "client is not open\n";
+  std::cerr << value.error().code_string()
+            << ": "
+            << value.error().message()
+            << "\n";
 }
 ```
 
-## Local store and sync
-
-A local `put()` is not only a key-value write. It can also create a sync operation internally. That means:
+## Recommended pattern
 
 ```cpp
-client.put("profile/name", "Ada");
-```
+Client client{
+    ClientOptions::persistent(
+        "node-1",
+        "data/sdk-store.wal")};
 
-Can update:
+const auto opened =
+    client.open();
 
-- local materialized state
-- WAL, if enabled
-- sync outbox
-- sync queue, if auto queue is enabled
-
-### Inspecting sync state after local writes
-
-```cpp
-auto state = client.sync_state();
-
-if (state.is_ok())
+if (opened.is_err())
 {
-    std::cout << "outbox: " << state.value().outbox_size  << "\n";
-    std::cout << "queued: " << state.value().queued_count << "\n";
-}
-```
-
-## Recommended local store flow
-
-```cpp
-ClientOptions options = ClientOptions::persistent("node-1", "data/app.wal");
-
-Client client{options};
-
-auto open_result = client.open();
-
-if (open_result.is_err())
-{
-    return 1;
+  return 1;
 }
 
-auto write_result = client.put("key", "value");
+const auto stored =
+    client.put("key", "value");
 
-if (write_result.is_err())
+if (stored.is_err())
 {
-    return 1;
+  client.close();
+  return 1;
 }
 
-auto read_result = client.get("key");
+const auto value =
+    client.get("key");
 
-if (read_result.is_ok())
+if (value.is_ok())
 {
-    // use read_result.value()
+  std::cout << value.value().to_string() << "\n";
 }
 
 client.close();
 ```
 
-## Example: local profile storage
+## When to use the local store
 
-```cpp
-#include <iostream>
-#include <softadastra/sdk.hpp>
+Use the local store when an application needs:
 
-int main()
-{
-    using namespace softadastra::sdk;
-
-    ClientOptions options = ClientOptions::memory_only("profile-node");
-
-    Client client{options};
-
-    if (client.open().is_err())
-    {
-        return 1;
-    }
-
-    client.put("profile/name",     "Ada");
-    client.put("profile/language", "C++");
-    client.put("profile/runtime",  "Softadastra");
-
-    auto name     = client.get("profile/name");
-    auto language = client.get("profile/language");
-    auto runtime  = client.get("profile/runtime");
-
-    if (name.is_ok())
-    {
-        std::cout << "name: "     << name.value().to_string()     << "\n";
-    }
-    if (language.is_ok())
-    {
-        std::cout << "language: " << language.value().to_string() << "\n";
-    }
-    if (runtime.is_ok())
-    {
-        std::cout << "runtime: "  << runtime.value().to_string()  << "\n";
-    }
-
-    std::cout << "entries: " << client.size() << "\n";
-
-    client.close();
-
-    return 0;
-}
+```txt
+offline writes
+local state
+restart recovery
+simple key/value persistence
+syncable local operations
+binary-safe values
 ```
 
-## Example: remove local session
-
-```cpp
-#include <iostream>
-#include <softadastra/sdk.hpp>
-
-int main()
-{
-    using namespace softadastra::sdk;
-
-    Client client{ClientOptions::memory_only("session-node")};
-
-    if (client.open().is_err())
-    {
-        return 1;
-    }
-
-    client.put("session/token", "temporary-token");
-
-    std::cout << "before remove: "
-              << (client.contains("session/token") ? "yes" : "no")
-              << "\n";
-
-    client.remove("session/token");
-
-    std::cout << "after remove: "
-              << (client.contains("session/token") ? "yes" : "no")
-              << "\n";
-
-    client.close();
-
-    return 0;
-}
-```
-
-## Design rule
-
-The SDK local store API must stay small. The user should not need to manually touch:
-
-- `softadastra::store::engine::StoreEngine`
-- `softadastra::store::core::Operation`
-- `softadastra::store::types::Key` / `Value`
-- `softadastra::wal::writer::WalWriter`
-- `softadastra::sync::engine::SyncEngine`
-
-The SDK should expose only: `Client`, `ClientOptions`, `Key`, `Value`, `Result`, `Error`.
-
-## Summary
-
-The local store layer gives the SDK its first useful public behavior:
-
-```cpp
-client.open();
-client.put("key", "value");
-client.get("key");
-client.remove("key");
-client.close();
-```
-
-It is simple at the API level, but backed by the deeper Softadastra runtime:
-
-```
-SDK Client
-  →  StoreEngine
-  →  WAL
-  →  Sync outbox
-  →  Transport later
-```
-
-> A clean public API over the powerful Softadastra foundation.
+The local store is the first layer that makes Softadastra useful without any network.

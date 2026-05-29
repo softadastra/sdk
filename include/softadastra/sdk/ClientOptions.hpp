@@ -1,11 +1,11 @@
 /**
  *
  *  @file ClientOptions.hpp
- *  @author Gaspard Kirira
+ *  @author Softadastra
  *
  *  Copyright 2026, Softadastra.
  *  All rights reserved.
- *  https://github.com/softadastra/sdk-cpp
+ *  https://github.com/softadastra/sdk.git
  *
  *  Licensed under the Apache License, Version 2.0.
  *
@@ -19,516 +19,408 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
-#include <utility>
-
-#include <softadastra/store/core/StoreConfig.hpp>
-#include <softadastra/sync/core/SyncConfig.hpp>
-#include <softadastra/transport/core/TransportConfig.hpp>
-#include <softadastra/discovery/DiscoveryOptions.hpp>
-#include <softadastra/metadata/MetadataOptions.hpp>
 
 namespace softadastra::sdk
 {
   /**
-   * @brief Public configuration object for the SDK client.
+   * @brief Public SDK client configuration.
    *
-   * ClientOptions groups the user-facing configuration needed to initialize
-   * a Softadastra SDK client.
+   * ClientOptions describes how a Softadastra SDK client should be initialized.
    *
-   * It controls:
-   * - local node identity
-   * - local WAL-backed store
-   * - sync behavior
-   * - optional transport configuration
-   * - optional discovery configuration
-   * - optional metadata configuration
+   * This type is part of the stable public SDK API. It intentionally avoids
+   * exposing internal Softadastra runtime configuration objects such as store,
+   * sync, transport, discovery, or metadata configs.
    *
-   * The SDK keeps this object small and explicit. Internal module-specific
-   * config objects are generated from it through conversion helpers.
+   * Internal configuration objects are built from ClientOptions inside the SDK
+   * implementation.
    */
-  struct ClientOptions
+  class ClientOptions
   {
+  public:
     /**
-     * @brief Local logical node identifier.
-     *
-     * This value should be unique per device or peer.
+     * @brief Creates default durable client options.
      */
-    std::string node_id{"node-1"};
-
-    /**
-     * @brief Path to the SDK local store WAL.
-     *
-     * The store uses this WAL to persist local writes before they are applied.
-     */
-    std::string store_wal_path{"data/sdk-store.wal"};
-
-    /**
-     * @brief Backward-compatible WAL path alias.
-     *
-     * This keeps older SDK examples and documentation readable.
-     */
-    std::string wal_path{"data/sdk-store.wal"};
-
-    /**
-     * @brief Enable WAL persistence for the local store.
-     *
-     * When false, the SDK client uses an in-memory store.
-     */
-    bool enable_store_wal{true};
-
-    /**
-     * @brief Backward-compatible WAL enable alias.
-     *
-     * This keeps older SDK examples and documentation readable.
-     */
-    bool enable_wal{true};
-
-    /**
-     * @brief Flush the WAL after every accepted local write.
-     *
-     * This is the safest production default.
-     */
-    bool auto_flush{true};
-
-    /**
-     * @brief Initial in-memory store capacity hint.
-     */
-    std::size_t initial_store_capacity{1024};
-
-    /**
-     * @brief Maximum number of sync operations returned in one batch.
-     */
-    std::size_t sync_batch_size{64};
-
-    /**
-     * @brief Maximum number of sync retries before giving up.
-     */
-    std::uint32_t max_sync_retries{5};
-
-    /**
-     * @brief Enable acknowledgement tracking for outbound sync operations.
-     */
-    bool require_ack{true};
-
-    /**
-     * @brief Automatically queue local operations after submission.
-     */
-    bool auto_queue{true};
-
-    /**
-     * @brief Enable transport support in the SDK client.
-     *
-     * Transport is optional because local-only apps should not be forced to
-     * start networking.
-     */
-    bool enable_transport{false};
-
-    /**
-     * @brief Local transport bind host.
-     */
-    std::string transport_host{"0.0.0.0"};
-
-    /**
-     * @brief Local transport bind port.
-     */
-    std::uint16_t transport_port{0};
-
-    /**
-     * @brief Enable peer discovery support in the SDK client.
-     */
-    bool enable_discovery{false};
-
-    /**
-     * @brief Discovery bind host.
-     */
-    std::string discovery_host{"0.0.0.0"};
-
-    /**
-     * @brief Discovery bind port.
-     */
-    std::uint16_t discovery_port{0};
-
-    /**
-     * @brief Backward-compatible discovery broadcast host.
-     *
-     * The current SDK discovery implementation uses the bind address.
-     * This field is kept so older examples can compile.
-     */
-    std::string discovery_broadcast_host{"0.0.0.0"};
-
-    /**
-     * @brief Backward-compatible discovery broadcast port.
-     *
-     * The current SDK discovery implementation uses the bind port.
-     * This field is kept so older examples can compile.
-     */
-    std::uint16_t discovery_broadcast_port{0};
-
-    /**
-     * @brief Human-readable node display name.
-     */
-    std::string display_name{};
-
-    /**
-     * @brief Product or runtime version exposed by metadata.
-     */
-    std::string version{"0.1.0"};
-
-    /**
-     * @brief Creates default client options.
-     */
-    ClientOptions() = default;
+    ClientOptions();
 
     /**
      * @brief Creates client options for a local node.
      *
-     * @param local_node_id Local node id.
+     * @param node_id Local logical node identifier.
      */
-    explicit ClientOptions(std::string local_node_id)
-        : node_id(std::move(local_node_id))
-    {
-      if (display_name.empty())
-      {
-        display_name = node_id;
-      }
-    }
+    explicit ClientOptions(std::string node_id);
 
     /**
-     * @brief Creates local memory-only client options.
+     * @brief Creates memory-only client options.
      *
-     * This is the simplest SDK entry point for examples, tutorials,
-     * and local-only applications.
+     * Memory-only mode does not persist the local store to a WAL file.
      *
-     * @param local_node_id Local node id.
-     * @return ClientOptions.
+     * @param node_id Local logical node identifier.
+     * @return SDK client options.
      */
-    [[nodiscard]] static ClientOptions local(
-        std::string local_node_id)
-    {
-      return memory_only(std::move(local_node_id));
-    }
+    [[nodiscard]] static ClientOptions memory_only(std::string node_id);
 
     /**
-     * @brief Creates durable production-oriented options.
+     * @brief Creates local client options.
      *
-     * @param local_node_id Local node id.
+     * This is a developer-friendly alias for memory_only().
+     *
+     * @param node_id Local logical node identifier.
+     * @return SDK client options.
+     */
+    [[nodiscard]] static ClientOptions local(std::string node_id);
+
+    /**
+     * @brief Creates persistent WAL-backed client options.
+     *
+     * Persistent mode is the default production-oriented mode. Local writes are
+     * backed by a WAL path so they can be recovered after restart.
+     *
+     * @param node_id Local logical node identifier.
      * @param wal_path Store WAL path.
-     * @return ClientOptions.
-     */
-    [[nodiscard]] static ClientOptions durable(
-        std::string local_node_id,
-        std::string wal_path = "data/sdk-store.wal")
-    {
-      ClientOptions options{std::move(local_node_id)};
-      options.store_wal_path = wal_path;
-      options.wal_path = std::move(wal_path);
-      options.enable_store_wal = true;
-      options.enable_wal = true;
-      options.auto_flush = true;
-      options.initial_store_capacity = 1024;
-      options.sync_batch_size = 64;
-      options.max_sync_retries = 5;
-      options.require_ack = true;
-      options.auto_queue = true;
-      return options;
-    }
-
-    /**
-     * @brief Creates persistent WAL-backed options.
-     *
-     * This is a developer-friendly alias for durable().
-     *
-     * @param local_node_id Local node id.
-     * @param wal_path Store WAL path.
-     * @return ClientOptions.
+     * @return SDK client options.
      */
     [[nodiscard]] static ClientOptions persistent(
-        std::string local_node_id,
-        std::string wal_path = "data/sdk-store.wal")
-    {
-      return durable(
-          std::move(local_node_id),
-          std::move(wal_path));
-    }
+        std::string node_id,
+        std::string wal_path = "data/sdk-store.wal");
 
     /**
-     * @brief Creates fast local options for tests or demos.
+     * @brief Creates durable WAL-backed client options.
      *
-     * @param local_node_id Local node id.
+     * This is an explicit alias for persistent().
+     *
+     * @param node_id Local logical node identifier.
      * @param wal_path Store WAL path.
-     * @return ClientOptions.
+     * @return SDK client options.
+     */
+    [[nodiscard]] static ClientOptions durable(
+        std::string node_id,
+        std::string wal_path = "data/sdk-store.wal");
+
+    /**
+     * @brief Creates fast WAL-backed client options.
+     *
+     * Fast mode keeps WAL persistence enabled but disables automatic flushing
+     * after every write. It is useful for benchmarks, tests, and controlled
+     * environments where throughput matters more than maximum durability.
+     *
+     * @param node_id Local logical node identifier.
+     * @param wal_path Store WAL path.
+     * @return SDK client options.
      */
     [[nodiscard]] static ClientOptions fast(
-        std::string local_node_id,
-        std::string wal_path = "data/sdk-store.wal")
-    {
-      ClientOptions options{std::move(local_node_id)};
-      options.store_wal_path = wal_path;
-      options.wal_path = std::move(wal_path);
-      options.enable_store_wal = true;
-      options.enable_wal = true;
-      options.auto_flush = false;
-      options.initial_store_capacity = 1024;
-      options.sync_batch_size = 128;
-      options.max_sync_retries = 2;
-      options.require_ack = false;
-      options.auto_queue = true;
-      return options;
-    }
+        std::string node_id,
+        std::string wal_path = "data/sdk-store.wal");
 
     /**
-     * @brief Creates memory-only options.
+     * @brief Returns the local logical node identifier.
      *
-     * @param local_node_id Local node id.
-     * @return ClientOptions.
+     * @return Node id.
      */
-    [[nodiscard]] static ClientOptions memory_only(
-        std::string local_node_id)
-    {
-      ClientOptions options{std::move(local_node_id)};
-      options.enable_store_wal = false;
-      options.enable_wal = false;
-      options.auto_flush = false;
-      options.initial_store_capacity = 1024;
-      options.require_ack = false;
-      return options;
-    }
+    [[nodiscard]] const std::string &node_id() const noexcept;
 
     /**
-     * @brief Enables transport and returns this options object.
-     *
-     * @param host Bind host.
-     * @param port Bind port.
-     * @return Modified options.
-     */
-    [[nodiscard]] ClientOptions with_transport(
-        std::string host,
-        std::uint16_t port) const
-    {
-      ClientOptions options = *this;
-      options.enable_transport = true;
-      options.transport_host = std::move(host);
-      options.transport_port = port;
-      return options;
-    }
-
-    /**
-     * @brief Enables local transport and returns this options object.
-     *
-     * @param port Bind port.
-     * @return Modified options.
-     */
-    [[nodiscard]] ClientOptions with_local_transport(
-        std::uint16_t port) const
-    {
-      return with_transport("127.0.0.1", port);
-    }
-
-    /**
-     * @brief Enables discovery and returns this options object.
-     *
-     * @param host Bind host.
-     * @param port Bind port.
-     * @return Modified options.
-     */
-    [[nodiscard]] ClientOptions with_discovery(
-        std::string host,
-        std::uint16_t port) const
-    {
-      ClientOptions options = *this;
-      options.enable_discovery = true;
-      options.discovery_host = host;
-      options.discovery_broadcast_host = std::move(host);
-      options.discovery_port = port;
-      options.discovery_broadcast_port = port;
-      return options;
-    }
-
-    /**
-     * @brief Enables local discovery and returns this options object.
-     *
-     * @param port Bind port.
-     * @return Modified options.
-     */
-    [[nodiscard]] ClientOptions with_local_discovery(
-        std::uint16_t port) const
-    {
-      return with_discovery("127.0.0.1", port);
-    }
-
-    /**
-     * @brief Sets display metadata and returns this options object.
-     *
-     * @param name Human-readable node display name.
-     * @param runtime_version Runtime or product version.
-     * @return Modified options.
-     */
-    [[nodiscard]] ClientOptions with_metadata(
-        std::string name,
-        std::string runtime_version = "0.1.0") const
-    {
-      ClientOptions options = *this;
-      options.display_name = std::move(name);
-      options.version = std::move(runtime_version);
-      return options;
-    }
-
-    /**
-     * @brief Returns the effective store WAL path.
+     * @brief Returns the store WAL path.
      *
      * @return Store WAL path.
      */
-    [[nodiscard]] const std::string &effective_store_wal_path() const noexcept
-    {
-      if (store_wal_path != "data/sdk-store.wal")
-      {
-        return store_wal_path;
-      }
-
-      return wal_path;
-    }
+    [[nodiscard]] const std::string &store_wal_path() const noexcept;
 
     /**
-     * @brief Returns true when the store WAL should be enabled.
+     * @brief Returns true if the local store WAL is enabled.
      *
-     * @return true if WAL persistence is enabled.
+     * @return true when WAL persistence is enabled.
      */
-    [[nodiscard]] bool effective_enable_store_wal() const noexcept
-    {
-      return enable_store_wal && enable_wal;
-    }
+    [[nodiscard]] bool store_wal_enabled() const noexcept;
 
     /**
-     * @brief Converts SDK options to StoreConfig.
+     * @brief Returns true if WAL writes are flushed automatically.
+     *
+     * @return true when auto flush is enabled.
      */
-    [[nodiscard]] softadastra::store::core::StoreConfig
-    to_store_config() const
-    {
-      if (!effective_enable_store_wal())
-      {
-        auto config = softadastra::store::core::StoreConfig::memory_only();
-        config.initial_capacity = initial_store_capacity;
-        return config;
-      }
-
-      auto config =
-          softadastra::store::core::StoreConfig::durable(
-              effective_store_wal_path());
-
-      config.enable_wal = effective_enable_store_wal();
-      config.auto_flush = auto_flush;
-      config.initial_capacity = initial_store_capacity;
-
-      return config;
-    }
+    [[nodiscard]] bool auto_flush() const noexcept;
 
     /**
-     * @brief Converts SDK options to SyncConfig.
+     * @brief Returns the initial local store capacity hint.
+     *
+     * @return Initial store capacity.
      */
-    [[nodiscard]] softadastra::sync::core::SyncConfig
-    to_sync_config() const
-    {
-      auto config =
-          softadastra::sync::core::SyncConfig::durable(node_id);
-
-      config.batch_size = sync_batch_size;
-      config.max_retries = max_sync_retries;
-      config.require_ack = require_ack;
-      config.auto_queue = auto_queue;
-
-      return config;
-    }
+    [[nodiscard]] std::size_t initial_store_capacity() const noexcept;
 
     /**
-     * @brief Converts SDK options to TransportConfig.
+     * @brief Returns the maximum number of sync operations per batch.
+     *
+     * @return Sync batch size.
      */
-    [[nodiscard]] softadastra::transport::core::TransportConfig
-    to_transport_config() const
-    {
-      return softadastra::transport::core::TransportConfig{
-          transport_host,
-          transport_port};
-    }
+    [[nodiscard]] std::size_t sync_batch_size() const noexcept;
 
     /**
-     * @brief Converts SDK options to DiscoveryOptions.
+     * @brief Returns the maximum number of sync retries.
+     *
+     * @return Maximum retry count.
      */
-    [[nodiscard]] softadastra::discovery::DiscoveryOptions
-    to_discovery_options() const
-    {
-      softadastra::discovery::DiscoveryOptions options;
-      options.node_id = node_id;
-      options.bind_host = discovery_host;
-      options.bind_port = discovery_port;
-      return options;
-    }
+    [[nodiscard]] std::uint32_t max_sync_retries() const noexcept;
 
     /**
-     * @brief Converts SDK options to MetadataOptions.
+     * @brief Returns true if outbound operations require acknowledgements.
+     *
+     * @return true when acknowledgements are required.
      */
-    [[nodiscard]] softadastra::metadata::MetadataOptions
-    to_metadata_options() const
-    {
-      softadastra::metadata::MetadataOptions options;
-      options.node_id = node_id;
-      options.display_name = display_name.empty() ? node_id : display_name;
-      options.version = version;
-      return options;
-    }
+    [[nodiscard]] bool require_ack() const noexcept;
 
     /**
-     * @brief Returns true if the options are usable.
+     * @brief Returns true if local operations are queued automatically.
+     *
+     * @return true when auto queue is enabled.
      */
-    [[nodiscard]] bool is_valid() const noexcept
-    {
-      if (node_id.empty())
-      {
-        return false;
-      }
-
-      if (version.empty())
-      {
-        return false;
-      }
-
-      if (initial_store_capacity == 0)
-      {
-        return false;
-      }
-
-      if (effective_enable_store_wal() &&
-          effective_store_wal_path().empty())
-      {
-        return false;
-      }
-
-      if (sync_batch_size == 0)
-      {
-        return false;
-      }
-
-      if (enable_transport &&
-          (transport_host.empty() || transport_port == 0))
-      {
-        return false;
-      }
-
-      if (enable_discovery &&
-          (discovery_host.empty() || discovery_port == 0))
-      {
-        return false;
-      }
-
-      return true;
-    }
+    [[nodiscard]] bool auto_queue() const noexcept;
 
     /**
-     * @brief Backward-compatible valid alias.
+     * @brief Returns true if transport support is enabled.
+     *
+     * @return true when transport is enabled.
      */
-    [[nodiscard]] bool valid() const noexcept
-    {
-      return is_valid();
-    }
+    [[nodiscard]] bool transport_enabled() const noexcept;
+
+    /**
+     * @brief Returns the transport bind host.
+     *
+     * @return Transport host.
+     */
+    [[nodiscard]] const std::string &transport_host() const noexcept;
+
+    /**
+     * @brief Returns the transport bind port.
+     *
+     * @return Transport port.
+     */
+    [[nodiscard]] std::uint16_t transport_port() const noexcept;
+
+    /**
+     * @brief Returns true if discovery support is enabled.
+     *
+     * @return true when discovery is enabled.
+     */
+    [[nodiscard]] bool discovery_enabled() const noexcept;
+
+    /**
+     * @brief Returns the discovery bind host.
+     *
+     * @return Discovery host.
+     */
+    [[nodiscard]] const std::string &discovery_host() const noexcept;
+
+    /**
+     * @brief Returns the discovery bind port.
+     *
+     * @return Discovery port.
+     */
+    [[nodiscard]] std::uint16_t discovery_port() const noexcept;
+
+    /**
+     * @brief Returns the human-readable node display name.
+     *
+     * @return Display name.
+     */
+    [[nodiscard]] const std::string &display_name() const noexcept;
+
+    /**
+     * @brief Returns the runtime or product version exposed through metadata.
+     *
+     * @return Version string.
+     */
+    [[nodiscard]] const std::string &version() const noexcept;
+
+    /**
+     * @brief Sets the local logical node identifier.
+     *
+     * @param value Node id.
+     */
+    void set_node_id(std::string value);
+
+    /**
+     * @brief Sets the store WAL path.
+     *
+     * @param value WAL path.
+     */
+    void set_store_wal_path(std::string value);
+
+    /**
+     * @brief Enables or disables the local store WAL.
+     *
+     * @param value true to enable WAL persistence.
+     */
+    void set_store_wal_enabled(bool value) noexcept;
+
+    /**
+     * @brief Enables or disables automatic WAL flushing.
+     *
+     * @param value true to flush after every accepted local write.
+     */
+    void set_auto_flush(bool value) noexcept;
+
+    /**
+     * @brief Sets the initial local store capacity hint.
+     *
+     * @param value Initial store capacity.
+     */
+    void set_initial_store_capacity(std::size_t value) noexcept;
+
+    /**
+     * @brief Sets the maximum number of sync operations per batch.
+     *
+     * @param value Sync batch size.
+     */
+    void set_sync_batch_size(std::size_t value) noexcept;
+
+    /**
+     * @brief Sets the maximum number of sync retries.
+     *
+     * @param value Maximum retry count.
+     */
+    void set_max_sync_retries(std::uint32_t value) noexcept;
+
+    /**
+     * @brief Enables or disables acknowledgement requirements.
+     *
+     * @param value true to require acknowledgements.
+     */
+    void set_require_ack(bool value) noexcept;
+
+    /**
+     * @brief Enables or disables automatic queueing of local operations.
+     *
+     * @param value true to queue local operations automatically.
+     */
+    void set_auto_queue(bool value) noexcept;
+
+    /**
+     * @brief Sets the transport configuration.
+     *
+     * This also enables transport support.
+     *
+     * @param host Transport bind host.
+     * @param port Transport bind port.
+     */
+    void set_transport(std::string host, std::uint16_t port);
+
+    /**
+     * @brief Disables transport support.
+     */
+    void disable_transport() noexcept;
+
+    /**
+     * @brief Sets the discovery configuration.
+     *
+     * This also enables discovery support.
+     *
+     * @param host Discovery bind host.
+     * @param port Discovery bind port.
+     */
+    void set_discovery(std::string host, std::uint16_t port);
+
+    /**
+     * @brief Disables discovery support.
+     */
+    void disable_discovery() noexcept;
+
+    /**
+     * @brief Sets the metadata display fields.
+     *
+     * @param name Human-readable node display name.
+     * @param runtime_version Runtime or product version.
+     */
+    void set_metadata(
+        std::string name,
+        std::string runtime_version = "0.1.0");
+
+    /**
+     * @brief Returns a copy with transport enabled.
+     *
+     * @param host Transport bind host.
+     * @param port Transport bind port.
+     * @return Modified client options.
+     */
+    [[nodiscard]] ClientOptions with_transport(
+        std::string host,
+        std::uint16_t port) const;
+
+    /**
+     * @brief Returns a copy with localhost transport enabled.
+     *
+     * @param port Transport bind port.
+     * @return Modified client options.
+     */
+    [[nodiscard]] ClientOptions with_local_transport(
+        std::uint16_t port) const;
+
+    /**
+     * @brief Returns a copy with discovery enabled.
+     *
+     * @param host Discovery bind host.
+     * @param port Discovery bind port.
+     * @return Modified client options.
+     */
+    [[nodiscard]] ClientOptions with_discovery(
+        std::string host,
+        std::uint16_t port) const;
+
+    /**
+     * @brief Returns a copy with localhost discovery enabled.
+     *
+     * @param port Discovery bind port.
+     * @return Modified client options.
+     */
+    [[nodiscard]] ClientOptions with_local_discovery(
+        std::uint16_t port) const;
+
+    /**
+     * @brief Returns a copy with metadata fields set.
+     *
+     * @param name Human-readable node display name.
+     * @param runtime_version Runtime or product version.
+     * @return Modified client options.
+     */
+    [[nodiscard]] ClientOptions with_metadata(
+        std::string name,
+        std::string runtime_version = "0.1.0") const;
+
+    /**
+     * @brief Returns true if the options can be used to open a client.
+     *
+     * @return true if the options are valid.
+     */
+    [[nodiscard]] bool is_valid() const noexcept;
+
+    /**
+     * @brief Backward-compatible alias for is_valid().
+     *
+     * @return true if the options are valid.
+     */
+    [[nodiscard]] bool valid() const noexcept;
+
+  private:
+    std::string node_id_{"node-1"};
+
+    std::string store_wal_path_{"data/sdk-store.wal"};
+    bool store_wal_enabled_{true};
+    bool auto_flush_{true};
+    std::size_t initial_store_capacity_{1024};
+
+    std::size_t sync_batch_size_{64};
+    std::uint32_t max_sync_retries_{5};
+    bool require_ack_{true};
+    bool auto_queue_{true};
+
+    bool transport_enabled_{false};
+    std::string transport_host_{"0.0.0.0"};
+    std::uint16_t transport_port_{0};
+
+    bool discovery_enabled_{false};
+    std::string discovery_host_{"0.0.0.0"};
+    std::uint16_t discovery_port_{0};
+
+    std::string display_name_{};
+    std::string version_{"0.1.0"};
   };
 
 } // namespace softadastra::sdk

@@ -1,68 +1,72 @@
-/*
- * 01_local_store.cpp
+/**
  *
- * Minimal local-only Softadastra SDK example.
+ *  @file 01_local_store.cpp
+ *  @author Softadastra
+ *
+ *  Copyright 2026, Softadastra.
+ *  All rights reserved.
+ *  https://github.com/softadastra/sdk.git
+ *
+ *  Licensed under the Apache License, Version 2.0.
+ *
+ *  Softadastra C++ SDK
+ *
  */
 
-#include <iostream>
-
 #include <softadastra/sdk.hpp>
+#include <iostream>
 
 int main()
 {
   using namespace softadastra::sdk;
 
-  ClientOptions options =
-      ClientOptions::local("node-local");
+  Client client{
+      ClientOptions::memory_only("example-local-store")};
 
-  options.enable_transport = false;
-  options.enable_discovery = false;
-  options.enable_wal = false;
+  const auto opened = client.open();
 
-  Client client{options};
-
-  auto open_result = client.open();
-
-  if (open_result.is_err())
+  if (opened.is_err())
   {
-    std::cerr << "failed to open client: "
-              << open_result.error().message()
+    std::cerr << "open failed: "
+              << opened.error().code_string()
+              << ": "
+              << opened.error().message()
               << "\n";
 
     return 1;
   }
 
-  auto put_result = client.put(
-      "app/name",
-      "Softadastra SDK");
+  const auto stored =
+      client.put("hello", "world");
 
-  if (put_result.is_err())
+  if (stored.is_err())
   {
-    std::cerr << "failed to store value: "
-              << put_result.error().message()
+    std::cerr << "put failed: "
+              << stored.error().code_string()
+              << ": "
+              << stored.error().message()
               << "\n";
 
     return 1;
   }
 
-  auto value_result = client.get("app/name");
+  const auto value =
+      client.get("hello");
 
-  if (value_result.is_err())
+  if (value.is_err())
   {
-    std::cerr << "failed to read value: "
-              << value_result.error().message()
+    std::cerr << "get failed: "
+              << value.error().code_string()
+              << ": "
+              << value.error().message()
               << "\n";
 
     return 1;
   }
 
-  std::cout << "key   : app/name\n";
+  std::cout << "key   : hello\n";
   std::cout << "value : "
-            << value_result.value().to_string()
-            << "\n";
-
-  std::cout << "size  : "
-            << client.size()
+            << value.value().to_string()
             << "\n";
 
   client.close();

@@ -1,531 +1,583 @@
 # Discovery
 
-The Softadastra C++ SDK exposes peer discovery through `softadastra::sdk::Client`.
+Discovery is the SDK layer used to find other Softadastra nodes.
 
-Discovery is used to find other Softadastra nodes without hardcoding every peer manually.
+Discovery is optional.
 
-At the SDK level, the goal is simple:
+A Softadastra application can write locally, persist data, inspect sync state, and even use transport with known peers without enabling discovery.
+
+```txt
+local store works without discovery
+persistence works without discovery
+sync tracking works without discovery
+transport can work without discovery when peers are known
+discovery is only needed to find peers automatically
+```
+
+## Header
+
+Use the umbrella header:
+
+```cpp
+#include <softadastra/sdk.hpp>
+```
+
+Or include the discovery-related SDK types directly:
+
+```cpp
+#include <softadastra/sdk/Client.hpp>
+#include <softadastra/sdk/ClientOptions.hpp>
+#include <softadastra/sdk/Peer.hpp>
+#include <softadastra/sdk/Error.hpp>
+```
+
+## What discovery does
+
+Discovery helps a local node find other nodes.
+
+The SDK exposes a small public discovery API:
 
 ```cpp
 client.start_discovery();
-auto peers = client.peers();
-client.connect(peer);
+client.stop_discovery();
+client.discovery_running();
+client.peers();
 ```
 
-The SDK hides the lower-level discovery module behind a small public API.
-
-## Goal
-
-Discovery answers one question:
-
-> *Which Softadastra peers are available near me?*
-
-In a local-first and offline-first system, this matters because peers may appear and disappear depending on: network availability, LAN conditions, device restarts, mobile devices moving between networks, temporary outages, or local edge nodes joining or leaving.
-
-## Main SDK types
+The public peer type is:
 
 ```cpp
-#include <softadastra/sdk.hpp>
+softadastra::sdk::Peer
 ```
 
-- `softadastra::sdk::Client`
-- `softadastra::sdk::ClientOptions`
-- `softadastra::sdk::Peer`
-- `softadastra::sdk::Result`
-- `softadastra::sdk::Error`
+Internal discovery objects are not exposed through the SDK.
 
-## Basic discovery flow
+## Discovery is disabled by default
+
+A default client does not start discovery.
 
 ```cpp
-#include <iostream>
-#include <softadastra/sdk.hpp>
+Client client{
+    ClientOptions::memory_only("node-1")};
 
-int main()
+client.open();
+
+const auto started =
+    client.start_discovery();
+
+// started.error().code() == Error::Code::DiscoveryError
+```
+
+This is intentional.
+
+Local-first behavior must not require peer discovery.
+
+## Enable discovery
+
+Enable discovery through `ClientOptions`:
+
+```cpp
+ClientOptions options =
+    ClientOptions::memory_only("node-discovery")
+        .with_local_discovery(5051);
+```
+
+This enables discovery on localhost:
+
+```txt
+127.0.0.1:5051
+```
+
+Then create and open the client:
+
+```cpp
+Client client{options};
+
+const auto opened =
+    client.open();
+
+if (opened.is_err())
 {
-    using namespace softadastra::sdk;
-
-    ClientOptions options = ClientOptions::local("node-discovery");
-
-    options.enable_discovery         = true;
-    options.discovery_host           = "127.0.0.1";
-    options.discovery_port           = 5051;
-    options.discovery_broadcast_host = "127.0.0.1";
-    options.discovery_broadcast_port = 5052;
-
-    Client client{options};
-
-    auto open_result = client.open();
-
-    if (open_result.is_err())
-    {
-        std::cerr << open_result.error().message() << "\n";
-        return 1;
-    }
-
-    auto discovery_result = client.start_discovery();
-
-    if (discovery_result.is_err())
-    {
-        std::cerr << discovery_result.error().message() << "\n";
-        client.close();
-        return 1;
-    }
-
-    auto peers_result = client.peers();
-
-    if (peers_result.is_ok())
-    {
-        for (const auto &peer : peers_result.value())
-        {
-            std::cout << peer.node_id << " "
-                      << peer.host   << ":"
-                      << peer.port   << "\n";
-        }
-    }
-
-    client.stop_discovery();
-    client.close();
-
-    return 0;
+  return 1;
 }
 ```
 
-## `ClientOptions` fields
+## Start discovery
+
+After opening the client, start discovery:
 
 ```cpp
-ClientOptions options = ClientOptions::local("node-a");
+const auto started =
+    client.start_discovery();
 
-options.enable_discovery         = true;
-options.discovery_host           = "127.0.0.1";
-options.discovery_port           = 5051;
-options.discovery_broadcast_host = "127.0.0.1";
-options.discovery_broadcast_port = 5052;
-```
-
-Expected fields:
-
-```cpp
-bool          enable_discovery;
-
-std::string   discovery_host;
-std::uint16_t discovery_port;
-
-std::string   discovery_broadcast_host;
-std::uint16_t discovery_broadcast_port;
-```
-
-## Enabling discovery
-
-Discovery is disabled in memory-only mode. To use it, enable explicitly:
-
-```cpp
-ClientOptions options = ClientOptions::local("node-discovery");
-
-options.enable_discovery = true;
-options.discovery_host   = "127.0.0.1";
-options.discovery_port   = 5051;
-```
-
-## Starting discovery
-
-```cpp
-auto result = client.start_discovery();
-
-if (result.is_err())
+if (started.is_err())
 {
-    std::cerr << result.error().code_string()
-              << ": "
-              << result.error().message()
-              << "\n";
+  std::cerr << started.error().code_string()
+            << ": "
+            << started.error().message()
+            << "\n";
+
+  return 1;
 }
 ```
 
-If discovery is disabled in options, `start_discovery()` returns an error.
-
-## Checking discovery state
+Check the running state:
 
 ```cpp
 if (client.discovery_running())
 {
-    std::cout << "discovery is running\n";
+  std::cout << "discovery is running\n";
 }
 ```
 
-## Stopping discovery
+## Stop discovery
 
 ```cpp
 client.stop_discovery();
 ```
 
-Safe to call even if discovery is already stopped.
+`stop_discovery()` is safe to call even when discovery is not running.
 
-## Listing discovered peers
+It is also safe when discovery is disabled.
 
-`peers()` returns `Result<std::vector<Peer>, Error>`.
-
-```cpp
-auto result = client.peers();
-
-if (result.is_err())
-{
-    std::cerr << result.error().message() << "\n";
-    return 1;
-}
-
-for (const auto &peer : result.value())
-{
-    std::cout << peer.node_id << " "
-              << peer.host   << ":"
-              << peer.port   << "\n";
-}
-```
-
-## `Peer` type
-
-Simple public SDK peer object.
+## Complete discovery start example
 
 ```cpp
-std::string   node_id;
-std::string   host;
-std::uint16_t port;
-std::int64_t  last_seen_at_ms;
-```
-
-Helpers:
-
-```cpp
-peer.is_valid();
-peer.valid();
-peer.is_localhost();
-peer.endpoint();
-```
-
-## Discovery and transport
-
-Discovery only finds peers. Transport connects to peers. The usual flow:
-
-```
-discovery finds peer
-  →  transport connects to peer
-  →  sync sends operations
-```
-
-Responsibilities:
-
-```
-Discovery  →  who exists?
-Transport  →  how do we connect?
-Sync       →  what do we send?
-Store      →  what local state do we keep?
-```
-
-At SDK level:
-
-```cpp
-auto peers = client.peers();
-
-if (peers.is_ok())
-{
-    for (const auto &peer : peers.value())
-    {
-        client.connect(peer);
-    }
-}
-```
-
-## Connecting to discovered peers
-
-Requires transport to be enabled and started.
-
-```cpp
-options.enable_transport = true;
-options.transport_port   = 4041;
-
-client.start_transport();
-
-auto peers_result = client.peers();
-
-if (peers_result.is_ok())
-{
-    for (const auto &peer : peers_result.value())
-    {
-        auto connect_result = client.connect(peer);
-
-        if (connect_result.is_err())
-        {
-            std::cerr << "failed to connect to "
-                      << peer.node_id << ": "
-                      << connect_result.error().message() << "\n";
-        }
-    }
-}
-```
-
-## Discovery with sync
-
-A complete flow:
-
-```cpp
-client.open();
-
-client.start_discovery();
-client.start_transport();
-
-auto peers = client.peers();
-
-if (peers.is_ok())
-{
-    for (const auto &peer : peers.value())
-    {
-        client.connect(peer);
-    }
-}
-
-client.put("message", "hello");
-client.tick();
-
-client.close();
-```
-
-## Discovery with local writes
-
-Local writes must not depend on discovery.
-
-```cpp
-client.put("profile/name", "Ada");  // works even if discovery is disabled
-```
-
-Discovery is only an optimization for finding peers later. The offline-first rule remains: local work must continue without network discovery.
-
-## Discovery failure behavior
-
-If discovery cannot start, local store and sync should still be usable.
-
-```cpp
-auto discovery = client.start_discovery();
-
-if (discovery.is_err())
-{
-    std::cerr << "discovery unavailable: "
-              << discovery.error().message() << "\n";
-}
-
-client.put("local/key", "still works");
-```
-
-## Discovery disabled behavior
-
-When `enable_discovery = false`, these return errors:
-
-```cpp
-client.start_discovery();
-client.peers();
-```
-
-This makes configuration mistakes visible.
-
-```cpp
-ClientOptions options = ClientOptions::memory_only("node-memory");
-
-Client client{options};
-client.open();
-
-auto result = client.start_discovery();
-
-if (result.is_err())
-{
-    std::cout << "discovery disabled\n";
-}
-```
-
-## Peer expiration
-
-Internally, discovery tracks peer states: `discovered`, `alive`, `stale`, `expired`. The public SDK exposes only valid usable peers:
-
-```cpp
-auto peers = client.peers();
-```
-
-Advanced diagnostics APIs can be added in later versions.
-
-## Discovery service internals
-
-Internally, the SDK can use `DiscoveryService`, `DiscoveryEngine`, `UdpDiscoveryBackend`, `DiscoveryRegistry` — but the SDK user should not need to create these manually. The public API stays:
-
-```cpp
-client.start_discovery();
-client.peers();
-client.stop_discovery();
-```
-
-## Example: print discovered peers
-
-```cpp
-#include <iostream>
 #include <softadastra/sdk.hpp>
+
+#include <iostream>
 
 int main()
 {
-    using namespace softadastra::sdk;
+  using namespace softadastra::sdk;
 
-    ClientOptions options = ClientOptions::local("node-discovery-demo");
+  ClientOptions options =
+      ClientOptions::memory_only("discovery-node")
+          .with_local_discovery(5051);
 
-    options.enable_discovery         = true;
-    options.discovery_host           = "127.0.0.1";
-    options.discovery_port           = 5051;
-    options.discovery_broadcast_host = "127.0.0.1";
-    options.discovery_broadcast_port = 5052;
-    options.enable_transport         = false;
+  Client client{options};
 
-    Client client{options};
+  const auto opened =
+      client.open();
 
-    if (client.open().is_err())
-    {
-        return 1;
-    }
+  if (opened.is_err())
+  {
+    std::cerr << opened.error().code_string()
+              << ": "
+              << opened.error().message()
+              << "\n";
 
-    auto started = client.start_discovery();
+    return 1;
+  }
 
-    if (started.is_err())
-    {
-        std::cerr << started.error().message() << "\n";
-        return 1;
-    }
+  const auto started =
+      client.start_discovery();
 
-    auto peers = client.peers();
+  if (started.is_err())
+  {
+    std::cerr << started.error().code_string()
+              << ": "
+              << started.error().message()
+              << "\n";
 
-    if (peers.is_ok())
-    {
-        std::cout << "peers found: " << peers.value().size() << "\n";
+    return 1;
+  }
 
-        for (const auto &peer : peers.value())
-        {
-            std::cout << "  " << peer.node_id << " "
-                              << peer.host    << ":"
-                              << peer.port    << "\n";
-        }
-    }
+  std::cout << "discovery running: "
+            << (client.discovery_running() ? "yes" : "no")
+            << "\n";
+
+  client.stop_discovery();
+  client.close();
+
+  return 0;
+}
+```
+
+## Listing discovered peers
+
+Use `peers()` to read the current discovered peer list:
+
+```cpp
+const auto peers =
+    client.peers();
+
+if (peers.is_ok())
+{
+  for (const auto &peer : peers.value())
+  {
+    std::cout << peer.node_id()
+              << " "
+              << peer.host()
+              << ":"
+              << peer.port()
+              << "\n";
+  }
+}
+```
+
+If no peers are discovered, the result is valid and the vector is empty.
+
+```cpp
+if (peers.is_ok() && peers.value().empty())
+{
+  std::cout << "no peers discovered\n";
+}
+```
+
+## Complete peers example
+
+```cpp
+#include <softadastra/sdk.hpp>
+
+#include <iostream>
+
+int main()
+{
+  using namespace softadastra::sdk;
+
+  ClientOptions options =
+      ClientOptions::memory_only("node-discovery")
+          .with_local_discovery(5051);
+
+  Client client{options};
+
+  if (client.open().is_err())
+  {
+    return 1;
+  }
+
+  const auto started =
+      client.start_discovery();
+
+  if (started.is_err())
+  {
+    std::cerr << started.error().message() << "\n";
+    return 1;
+  }
+
+  const auto peers =
+      client.peers();
+
+  if (peers.is_err())
+  {
+    std::cerr << peers.error().message() << "\n";
 
     client.stop_discovery();
     client.close();
 
-    return 0;
+    return 1;
+  }
+
+  std::cout << "peers: "
+            << peers.value().size()
+            << "\n";
+
+  for (const auto &peer : peers.value())
+  {
+    std::cout << peer.node_id()
+              << " "
+              << peer.host()
+              << ":"
+              << peer.port()
+              << "\n";
+  }
+
+  client.stop_discovery();
+  client.close();
+
+  return 0;
 }
 ```
 
-## Example: discover then connect
+## Peer
+
+`Peer` is the public SDK representation of another node.
+
+A peer has:
+
+```txt
+node id
+host
+port
+```
+
+Create a peer:
 
 ```cpp
-#include <iostream>
+Peer peer{
+    "node-b",
+    "127.0.0.1",
+    9101};
+```
+
+Create a localhost peer:
+
+```cpp
+Peer peer =
+    Peer::local("node-b", 9101);
+```
+
+A valid peer must have:
+
+```txt
+non-empty node id
+non-empty host
+non-zero port
+```
+
+## Discovery and transport
+
+Discovery finds peers.
+
+Transport connects to peers.
+
+Sync tracks operations.
+
+```txt
+discovery finds peers
+transport connects peers
+sync tracks operations
+```
+
+Discovery alone does not deliver sync operations.
+
+A typical flow is:
+
+```cpp
+ClientOptions options =
+    ClientOptions::memory_only("node-a")
+        .with_local_discovery(5051)
+        .with_local_transport(9100);
+
+Client client{options};
+
+client.open();
+
+client.start_discovery();
+client.start_transport();
+
+const auto peers =
+    client.peers();
+
+if (peers.is_ok())
+{
+  for (const auto &peer : peers.value())
+  {
+    client.connect(peer);
+  }
+}
+```
+
+## Discovery and local-first behavior
+
+Discovery is not required for local correctness.
+
+This still works when discovery is disabled:
+
+```cpp
+client.put("key", "value");
+```
+
+This also works when discovery has found no peers:
+
+```cpp
+const auto state =
+    client.sync_state();
+```
+
+Discovery is only needed when the application wants to find other nodes automatically.
+
+## Known peers without discovery
+
+If your application already knows peer addresses, you can skip discovery.
+
+```cpp
+ClientOptions options =
+    ClientOptions::memory_only("node-a")
+        .with_local_transport(9100);
+
+Client client{options};
+
+client.open();
+client.start_transport();
+
+Peer peer{
+    "node-b",
+    "192.168.1.20",
+    9101};
+
+client.connect(peer);
+```
+
+In this case, discovery is not needed.
+
+## Lifecycle rules
+
+Discovery operations require:
+
+```txt
+client opened
+discovery enabled in ClientOptions
+discovery runtime initialized
+```
+
+This means:
+
+```cpp
+Client client{
+    ClientOptions::memory_only("node-1")};
+
+client.start_discovery();
+```
+
+returns `Error::Code::InvalidState`, because the client is closed.
+
+This:
+
+```cpp
+Client client{
+    ClientOptions::memory_only("node-1")};
+
+client.open();
+client.start_discovery();
+```
+
+returns `Error::Code::DiscoveryError`, because discovery is disabled.
+
+Correct:
+
+```cpp
+Client client{
+    ClientOptions::memory_only("node-1")
+        .with_local_discovery(5051)};
+
+client.open();
+client.start_discovery();
+```
+
+## Error behavior
+
+Common discovery errors:
+
+| Situation                 | Error code                    |
+| ------------------------- | ----------------------------- |
+| Client is closed          | `Error::Code::InvalidState`   |
+| Discovery is disabled     | `Error::Code::DiscoveryError` |
+| Discovery failed to start | `Error::Code::DiscoveryError` |
+| Runtime is incomplete     | `Error::Code::InternalError`  |
+
+Example:
+
+```cpp
+const auto peers =
+    client.peers();
+
+if (peers.is_err())
+{
+  std::cerr << peers.error().code_string()
+            << ": "
+            << peers.error().message()
+            << "\n";
+}
+```
+
+## Recommended pattern
+
+```cpp
 #include <softadastra/sdk.hpp>
+
+#include <iostream>
 
 int main()
 {
-    using namespace softadastra::sdk;
+  using namespace softadastra::sdk;
 
-    ClientOptions options = ClientOptions::local("node-a");
+  ClientOptions options =
+      ClientOptions::persistent(
+          "node-1",
+          "data/sdk-store.wal")
+          .with_local_discovery(5051)
+          .with_local_transport(9100);
 
-    options.enable_transport         = true;
-    options.transport_host           = "127.0.0.1";
-    options.transport_port           = 4041;
+  Client client{options};
 
-    options.enable_discovery         = true;
-    options.discovery_host           = "127.0.0.1";
-    options.discovery_port           = 5051;
-    options.discovery_broadcast_host = "127.0.0.1";
-    options.discovery_broadcast_port = 5052;
+  const auto opened =
+      client.open();
 
-    Client client{options};
+  if (opened.is_err())
+  {
+    return 1;
+  }
 
-    if (client.open().is_err())
-    {
-        return 1;
-    }
+  const auto discovery_started =
+      client.start_discovery();
 
-    if (client.start_transport().is_err())
-    {
-        std::cerr << "transport failed\n";
-        return 1;
-    }
-
-    if (client.start_discovery().is_err())
-    {
-        std::cerr << "discovery failed\n";
-        return 1;
-    }
-
-    auto peers = client.peers();
-
-    if (peers.is_ok())
-    {
-        for (const auto &peer : peers.value())
-        {
-            auto connected = client.connect(peer);
-
-            if (connected.is_ok())
-            {
-                std::cout << "connected to " << peer.node_id << "\n";
-            }
-        }
-    }
-
-    client.put("hello", "from node-a");
-    client.tick();
-
+  if (discovery_started.is_err())
+  {
     client.close();
+    return 1;
+  }
 
-    return 0;
+  const auto transport_started =
+      client.start_transport();
+
+  if (transport_started.is_err())
+  {
+    client.stop_discovery();
+    client.close();
+    return 1;
+  }
+
+  const auto peers =
+      client.peers();
+
+  if (peers.is_ok())
+  {
+    for (const auto &peer : peers.value())
+    {
+      client.connect(peer);
+    }
+  }
+
+  client.stop_discovery();
+  client.stop_transport();
+  client.close();
+
+  return 0;
 }
 ```
 
-## Recommended SDK discovery API
+## When to use discovery
+
+Use discovery when your application needs:
+
+```txt
+automatic peer discovery
+local network peer lookup
+node discovery before transport connection
+dynamic peer lists
+multi-node local-first systems
+```
+
+Do not use discovery just to write local data.
+
+For local writes, the store API is enough:
 
 ```cpp
-Result<void, Error>              start_discovery();
-void                             stop_discovery();
-bool                             discovery_running() const noexcept;
-Result<std::vector<Peer>, Error> peers() const;
+client.put("key", "value");
 ```
-
-## What the SDK should hide
-
-Application developers should not need to manually use:
-
-- `softadastra::discovery::core::DiscoveryConfig`
-- `softadastra::discovery::core::DiscoveryContext`
-- `softadastra::discovery::engine::DiscoveryEngine`
-- `softadastra::discovery::backend::UdpDiscoveryBackend`
-- `softadastra::discovery::peer::DiscoveryRegistry`
-- `softadastra::discovery::client::DiscoveryClient`
-- `softadastra::discovery::server::DiscoveryServer`
-
-## Design rule
-
-Discovery must remain optional. A Softadastra application should be able to work in these modes:
-
-```
-local only
-local + WAL
-local + WAL + sync
-local + WAL + sync + transport
-local + WAL + sync + transport + discovery
-```
-
-Discovery is the last layer, not the foundation. The foundation remains: local writes, durability, sync tracking, safe retry, and eventual convergence.
 
 ## Summary
 
-The developer should mostly write:
+Discovery is optional.
 
-```cpp
-client.start_discovery();
-
-auto peers = client.peers();
-
-for (const auto &peer : peers.value())
-{
-    client.connect(peer);
-}
+```txt
+local store does not require discovery
+persistence does not require discovery
+sync tracking does not require discovery
+transport can work without discovery
+automatic peer lookup requires discovery
 ```
 
-Internally, Softadastra can use UDP discovery, announcements, peer registries, and metadata — but the SDK must keep the public API small, stable, and easy to understand.
+Use discovery when the SDK client needs to find other nodes automatically.
