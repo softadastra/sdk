@@ -14,6 +14,7 @@
  */
 
 #include <softadastra/sdk/ClientOptions.hpp>
+
 #include <utility>
 
 namespace softadastra::sdk
@@ -42,6 +43,8 @@ namespace softadastra::sdk
     options.require_ack_ = false;
     options.auto_queue_ = true;
 
+    options.transport_backend_ = TransportBackend::AsyncTcp;
+
     return options;
   }
 
@@ -65,6 +68,8 @@ namespace softadastra::sdk
     options.max_sync_retries_ = 5;
     options.require_ack_ = true;
     options.auto_queue_ = true;
+
+    options.transport_backend_ = TransportBackend::AsyncTcp;
 
     return options;
   }
@@ -93,6 +98,8 @@ namespace softadastra::sdk
     options.max_sync_retries_ = 2;
     options.require_ack_ = false;
     options.auto_queue_ = true;
+
+    options.transport_backend_ = TransportBackend::AsyncTcp;
 
     return options;
   }
@@ -145,6 +152,12 @@ namespace softadastra::sdk
   bool ClientOptions::transport_enabled() const noexcept
   {
     return transport_enabled_;
+  }
+
+  ClientOptions::TransportBackend
+  ClientOptions::transport_backend() const noexcept
+  {
+    return transport_backend_;
   }
 
   const std::string &ClientOptions::transport_host() const noexcept
@@ -234,11 +247,29 @@ namespace softadastra::sdk
     auto_queue_ = value;
   }
 
+  void ClientOptions::set_transport_backend(
+      TransportBackend value) noexcept
+  {
+    transport_backend_ = value;
+  }
+
   void ClientOptions::set_transport(
       std::string host,
       std::uint16_t port)
   {
+    set_transport(
+        std::move(host),
+        port,
+        TransportBackend::AsyncTcp);
+  }
+
+  void ClientOptions::set_transport(
+      std::string host,
+      std::uint16_t port,
+      TransportBackend backend)
+  {
     transport_enabled_ = true;
+    transport_backend_ = backend;
     transport_host_ = std::move(host);
     transport_port_ = port;
   }
@@ -246,6 +277,7 @@ namespace softadastra::sdk
   void ClientOptions::disable_transport() noexcept
   {
     transport_enabled_ = false;
+    transport_backend_ = TransportBackend::AsyncTcp;
     transport_host_ = "0.0.0.0";
     transport_port_ = 0;
   }
@@ -278,15 +310,42 @@ namespace softadastra::sdk
       std::string host,
       std::uint16_t port) const
   {
+    return with_transport(
+        std::move(host),
+        port,
+        TransportBackend::AsyncTcp);
+  }
+
+  ClientOptions ClientOptions::with_transport(
+      std::string host,
+      std::uint16_t port,
+      TransportBackend backend) const
+  {
     ClientOptions options = *this;
-    options.set_transport(std::move(host), port);
+    options.set_transport(
+        std::move(host),
+        port,
+        backend);
+
     return options;
   }
 
   ClientOptions ClientOptions::with_local_transport(
       std::uint16_t port) const
   {
-    return with_transport("127.0.0.1", port);
+    return with_local_transport(
+        port,
+        TransportBackend::AsyncTcp);
+  }
+
+  ClientOptions ClientOptions::with_local_transport(
+      std::uint16_t port,
+      TransportBackend backend) const
+  {
+    return with_transport(
+        "127.0.0.1",
+        port,
+        backend);
   }
 
   ClientOptions ClientOptions::with_discovery(
@@ -312,6 +371,7 @@ namespace softadastra::sdk
     options.set_metadata(
         std::move(name),
         std::move(runtime_version));
+
     return options;
   }
 

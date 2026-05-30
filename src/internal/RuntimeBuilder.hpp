@@ -57,8 +57,10 @@ namespace softadastra::sdk::internal
      * - metadata service
      *
      * Optional modules are created only when enabled in ClientOptions:
-     * - transport
-     * - discovery
+     * - async runtime context
+     * - async TCP transport backend
+     * - transport engine
+     * - discovery service
      *
      * @param options Public SDK client options.
      * @return Runtime on success, Error on failure.
@@ -88,7 +90,17 @@ namespace softadastra::sdk::internal
         const ClientOptions &options);
 
     /**
+     * @brief Creates the async runtime context when needed.
+     *
+     * @param runtime Runtime being built.
+     */
+    static void build_async_runtime(Runtime &runtime);
+
+    /**
      * @brief Creates transport modules when transport is enabled.
+     *
+     * The SDK uses the async TCP transport backend as the default transport
+     * backend.
      *
      * @param runtime Runtime being built.
      * @param options Public SDK client options.

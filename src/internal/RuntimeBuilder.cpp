@@ -45,6 +45,7 @@ namespace softadastra::sdk::internal
 
     build_store(runtime, options);
     build_sync(runtime, options);
+    build_async_runtime(runtime);
     build_transport(runtime, options);
     build_discovery(runtime, options);
     build_metadata(runtime, options);
@@ -56,11 +57,20 @@ namespace softadastra::sdk::internal
               "failed to build local SDK runtime"));
     }
 
-    if (!runtime.has_metadata())
+    if (options.transport_enabled() &&
+        !runtime.has_async_runtime())
     {
       return BuildResult::err(
-          ErrorMapper::metadata(
-              "failed to build SDK metadata service"));
+          ErrorMapper::transport(
+              "failed to build SDK async runtime"));
+    }
+
+    if (options.transport_enabled() &&
+        !runtime.has_transport())
+    {
+      return BuildResult::err(
+          ErrorMapper::transport(
+              "failed to build SDK async transport runtime"));
     }
 
     return BuildResult::ok(std::move(runtime));
@@ -117,14 +127,22 @@ namespace softadastra::sdk::internal
             *runtime.sync);
   }
 
+  void RuntimeBuilder::build_async_runtime(Runtime &runtime)
+  {
+    if (runtime.io_context)
+    {
+      return;
+    }
+
+    runtime.io_context =
+        std::make_unique<Runtime::IoContext>();
+  }
+
   void RuntimeBuilder::build_transport(
       Runtime &runtime,
       const ClientOptions &options)
   {
-    if (!options.transport_enabled())
-    {
-      return;
-    }
+    build_async_runtime(runtime);
 
     runtime.transport_config =
         std::make_unique<Runtime::TransportConfig>(
@@ -132,39 +150,73 @@ namespace softadastra::sdk::internal
 
     runtime.transport_context =
         std::make_unique<Runtime::TransportContext>(
-            *runtime.transport_config);
+            *runtime.transport_config,
+            *runtime.sync);
 
-    runtime.transport_backend =
-        std::make_unique<Runtime::TcpTransportBackend>(
-            *runtime.transport_context);
+    switch (options.transport_backend())
+    {
+    case ClientOptions::TransportBackend::AsyncTcp:
+      runtime.async_transport_backend =
+          std::make_unique<Runtime::AsyncTcpTransportBackend>(
+              *runtime.io_context,
+              *runtime.transport_config);
 
-    runtime.transport =
-        std::make_unique<Runtime::TransportEngine>(
-            *runtime.transport_context,
-            *runtime.transport_backend);
+      runtime.transport =
+          std::make_unique<Runtime::TransportEngine>(
+              *runtime.transport_context,
+              *runtime.async_transport_backend);
+
+      break;
+    }
   }
-
   void RuntimeBuilder::build_discovery(
       Runtime &runtime,
       const ClientOptions &options)
   {
-    if (!options.discovery_enabled())
+    if (!runtime.transport)
     {
       return;
     }
 
+    const auto discovery_options =
+        to_discovery_options(options);
+
+    runtime.discovery_config =
+        std::make_unique<Runtime::DiscoveryConfig>(
+            discovery_options.to_config());
+
+    runtime.discovery_context =
+        std::make_unique<Runtime::DiscoveryContext>(
+            *runtime.discovery_config,
+            *runtime.transport);
+
+    runtime.discovery_backend =
+        std::make_unique<Runtime::UdpDiscoveryBackend>(
+            *runtime.discovery_config);
+
+    runtime.discovery_engine =
+        std::make_unique<Runtime::DiscoveryEngine>(
+            *runtime.discovery_context,
+            *runtime.discovery_backend);
+
     runtime.discovery =
         std::make_unique<Runtime::DiscoveryService>(
-            to_discovery_options(options));
+            discovery_options,
+            *runtime.transport);
   }
 
   void RuntimeBuilder::build_metadata(
       Runtime &runtime,
       const ClientOptions &options)
   {
+    if (!runtime.discovery_engine)
+    {
+      return;
+    }
+
     runtime.metadata =
         std::make_unique<Runtime::MetadataService>(
-            to_metadata_options(options));
+            to_metadata_options(options),
+            *runtime.discovery_engine);
   }
-
 } // namespace softadastra::sdk::internal

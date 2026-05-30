@@ -16,10 +16,10 @@
 #include "ClientImpl.hpp"
 
 #include "conversions/DiscoveryConversions.hpp"
+#include "conversions/MetadataConversions.hpp"
 #include "conversions/StoreConversions.hpp"
 #include "conversions/SyncConversions.hpp"
 #include "conversions/TransportConversions.hpp"
-#include "conversions/MetadataConversions.hpp"
 
 #include "internal/ErrorMapper.hpp"
 #include "internal/RuntimeBuilder.hpp"
@@ -84,7 +84,8 @@ namespace softadastra::sdk
               "invalid SDK client options"));
     }
 
-    auto built = internal::RuntimeBuilder::build(options_);
+    auto built =
+        internal::RuntimeBuilder::build(options_);
 
     if (built.is_err())
     {
@@ -291,6 +292,12 @@ namespace softadastra::sdk
     const auto result =
         runtime_.scheduler->tick(prune_completed);
 
+    if (options_.transport_enabled() &&
+        runtime_.has_transport())
+    {
+      runtime_.process_transport_events(64);
+    }
+
     return TickStateResult::ok(
         internal::from_scheduler_tick_result(result));
   }
@@ -378,6 +385,7 @@ namespace softadastra::sdk
 
     if (runtime_.transport->is_running())
     {
+      runtime_.process_transport_events(64);
       return VoidResult::ok();
     }
 
@@ -388,6 +396,8 @@ namespace softadastra::sdk
               "failed to start transport"));
     }
 
+    runtime_.process_transport_events(64);
+
     return VoidResult::ok();
   }
 
@@ -397,12 +407,38 @@ namespace softadastra::sdk
     {
       runtime_.transport->stop();
     }
+
+    if (runtime_.async_transport_backend)
+    {
+      runtime_.async_transport_backend->shutdown();
+    }
+
+    runtime_.process_transport_events(256);
   }
 
   bool ClientImpl::transport_running() const noexcept
   {
     return runtime_.transport &&
            runtime_.transport->is_running();
+  }
+
+  ClientImpl::TransportEventsResult
+  ClientImpl::process_transport_events(std::size_t max_events)
+  {
+    const auto transport_result =
+        internal::RuntimeGuards::require_transport(
+            open_,
+            options_.transport_enabled(),
+            runtime_);
+
+    if (transport_result.is_err())
+    {
+      return TransportEventsResult::err(
+          transport_result.error());
+    }
+
+    return TransportEventsResult::ok(
+        runtime_.process_transport_events(max_events));
   }
 
   ClientImpl::VoidResult ClientImpl::connect(const Peer &peer)
@@ -428,11 +464,15 @@ namespace softadastra::sdk
     if (!runtime_.transport->connect_peer(
             internal::to_transport_peer(peer)))
     {
+      runtime_.process_transport_events(64);
+
       return VoidResult::err(
           internal::ErrorMapper::transport(
               "failed to connect to peer",
               peer.node_id()));
     }
+
+    runtime_.process_transport_events(64);
 
     return VoidResult::ok();
   }
@@ -460,11 +500,15 @@ namespace softadastra::sdk
     if (!runtime_.transport->disconnect_peer(
             internal::to_transport_peer(peer)))
     {
+      runtime_.process_transport_events(64);
+
       return VoidResult::err(
           internal::ErrorMapper::transport(
               "failed to disconnect from peer",
               peer.node_id()));
     }
+
+    runtime_.process_transport_events(64);
 
     return VoidResult::ok();
   }
@@ -485,6 +529,13 @@ namespace softadastra::sdk
     if (runtime_.discovery->is_running())
     {
       return VoidResult::ok();
+    }
+
+    if (!runtime_.discovery->options().is_valid())
+    {
+      return VoidResult::err(
+          internal::ErrorMapper::discovery(
+              "invalid discovery options"));
     }
 
     if (!runtime_.discovery->start())
@@ -547,7 +598,8 @@ namespace softadastra::sdk
       return NodeInfoResult::err(metadata_result.error());
     }
 
-    const auto metadata = runtime_.metadata->local();
+    const auto metadata =
+        runtime_.metadata->local_or_refresh();
 
     if (!metadata.has_value())
     {
@@ -572,7 +624,8 @@ namespace softadastra::sdk
       return NodeInfoResult::err(metadata_result.error());
     }
 
-    const auto metadata = runtime_.metadata->refresh();
+    const auto metadata =
+        runtime_.metadata->refresh();
 
     if (!metadata.has_value())
     {

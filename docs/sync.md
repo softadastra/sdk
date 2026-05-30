@@ -1,6 +1,7 @@
 # Sync
 
 The sync layer is the part of the Softadastra C++ SDK that tracks local operations so they can be delivered later.
+
 A local write is not only applied to the local store. It is also submitted to the synchronization pipeline.
 
 ```txt
@@ -12,7 +13,11 @@ sync outbox
 ↓
 sync queue
 ↓
-manual or automatic delivery later
+transport batch when peers are available
+↓
+async transport events
+↓
+event processing
 ```
 
 The important rule is:
@@ -52,14 +57,17 @@ client.prune_completed();
 client.prune_failed();
 ```
 
-These methods do not expose internal sync engine objects.
-
-The public SDK types are:
+When transport is enabled, the SDK also exposes:
 
 ```cpp
-softadastra::sdk::SyncState
-softadastra::sdk::TickResult
+client.process_transport_events();
 ```
+
+Sync tracks operations.
+
+Transport sends and receives data.
+
+Transport events update peer state and dispatch inbound messages.
 
 ## Local writes are tracked
 
@@ -200,6 +208,7 @@ A tick can:
 retry expired operations
 collect outbound work
 optionally prune completed entries
+process a small batch of async transport events when transport is enabled
 ```
 
 Example:
@@ -348,6 +357,212 @@ if (pruned.is_ok())
 }
 ```
 
+## Async transport events
+
+When transport is enabled, the SDK uses the async TCP backend internally.
+
+The backend produces transport events such as:
+
+```txt
+peer connected
+peer disconnected
+envelope received
+send completed
+send failed
+backend error
+```
+
+The SDK exposes one public method to process those events:
+
+```cpp
+client.process_transport_events();
+```
+
+You can control the maximum number of events:
+
+```cpp
+client.process_transport_events(128);
+```
+
+This method lets the SDK consume queued backend events, update transport peer state, and dispatch inbound messages.
+
+## Sync with async transport
+
+A typical manual sync and transport loop looks like this:
+
+```cpp
+while (running)
+{
+  client.tick();
+  client.process_transport_events(64);
+
+  // application work here
+}
+```
+
+In a small CLI or test, you can call it manually after important operations:
+
+```cpp
+client.start_transport();
+client.process_transport_events();
+
+client.connect(peer);
+client.process_transport_events();
+
+client.put("message", "hello");
+
+client.tick();
+client.process_transport_events();
+```
+
+## Sync without transport
+
+Sync still works without transport.
+
+This is valid:
+
+```cpp
+Client client{
+    ClientOptions::memory_only("node-sync")};
+
+client.open();
+
+client.put("message", "hello");
+
+const auto state =
+    client.sync_state();
+
+const auto tick =
+    client.tick();
+
+client.close();
+```
+
+In this case:
+
+```txt
+local write is accepted
+store is updated
+sync state is updated
+no peer delivery happens
+```
+
+Transport is not required.
+
+## Sync with transport enabled
+
+Enable transport when the node must communicate with peers:
+
+```cpp
+ClientOptions options =
+    ClientOptions::memory_only("node-a")
+        .with_local_transport(9100);
+
+Client client{options};
+
+client.open();
+client.start_transport();
+client.process_transport_events();
+```
+
+Connect to a known peer:
+
+```cpp
+Peer peer =
+    Peer::local("node-b", 9101);
+
+client.connect(peer);
+client.process_transport_events();
+```
+
+Then write and tick:
+
+```cpp
+client.put("message", "hello");
+
+const auto tick =
+    client.tick();
+
+client.process_transport_events();
+```
+
+## Complete sync plus async transport example
+
+```cpp
+#include <softadastra/sdk.hpp>
+
+#include <iostream>
+
+int main()
+{
+  using namespace softadastra::sdk;
+
+  ClientOptions options =
+      ClientOptions::memory_only("node-a")
+          .with_local_transport(9100);
+
+  Client client{options};
+
+  const auto opened =
+      client.open();
+
+  if (opened.is_err())
+  {
+    std::cerr << opened.error().message() << "\n";
+    return 1;
+  }
+
+  const auto started =
+      client.start_transport();
+
+  if (started.is_err())
+  {
+    std::cerr << started.error().message() << "\n";
+    client.close();
+    return 1;
+  }
+
+  client.process_transport_events();
+
+  client.put("message", "hello async sync");
+
+  const auto before =
+      client.sync_state();
+
+  if (before.is_ok())
+  {
+    std::cout << "outbox before tick: "
+              << before.value().outbox_size()
+              << "\n";
+  }
+
+  const auto tick =
+      client.tick();
+
+  if (tick.is_ok())
+  {
+    std::cout << "batch size: "
+              << tick.value().batch_size()
+              << "\n";
+  }
+
+  const auto handled =
+      client.process_transport_events();
+
+  if (handled.is_ok())
+  {
+    std::cout << "handled transport events: "
+              << handled.value()
+              << "\n";
+  }
+
+  client.stop_transport();
+  client.close();
+
+  return 0;
+}
+```
+
 ## Closed client behavior
 
 Sync methods require an open client.
@@ -374,6 +589,8 @@ retry_expired()
 prune_completed()
 prune_failed()
 ```
+
+`process_transport_events()` also returns `InvalidState` when the client is closed.
 
 ## Sync and persistence
 
@@ -424,6 +641,7 @@ Then:
 
 ```cpp
 client.start_transport();
+client.process_transport_events();
 ```
 
 Without transport, local operations can still be tracked.
@@ -469,6 +687,25 @@ const auto tick =
 const auto after =
     client.sync_state();
 
+client.close();
+```
+
+With transport enabled:
+
+```cpp
+Client client{
+    ClientOptions::memory_only("node-sync-transport")
+        .with_local_transport(9100)};
+
+client.open();
+client.start_transport();
+
+client.put("message", "hello");
+
+client.tick();
+client.process_transport_events();
+
+client.stop_transport();
 client.close();
 ```
 
@@ -618,11 +855,12 @@ int main()
 
 Common sync errors:
 
-| Situation             | Error code                                               |
-| --------------------- | -------------------------------------------------------- |
-| Client is closed      | `Error::Code::InvalidState`                              |
-| Runtime is incomplete | `Error::Code::InternalError`                             |
-| Internal sync failure | `Error::Code::SyncError` or `Error::Code::InternalError` |
+| Situation                                              | Error code                                               |
+| ------------------------------------------------------ | -------------------------------------------------------- |
+| Client is closed                                       | `Error::Code::InvalidState`                              |
+| Runtime is incomplete                                  | `Error::Code::InternalError`                             |
+| Internal sync failure                                  | `Error::Code::SyncError` or `Error::Code::InternalError` |
+| Transport events processed while transport is disabled | `Error::Code::TransportError`                            |
 
 Example:
 
@@ -640,6 +878,8 @@ if (tick.is_err())
 ```
 
 ## Recommended pattern
+
+Without transport:
 
 ```cpp
 Client client{
@@ -675,17 +915,53 @@ if (state.is_ok() && state.value().has_work())
 client.close();
 ```
 
+With transport:
+
+```cpp
+Client client{
+    ClientOptions::persistent(
+        "node-1",
+        "data/sdk-store.wal")
+        .with_local_transport(9100)};
+
+const auto opened =
+    client.open();
+
+if (opened.is_err())
+{
+  return 1;
+}
+
+const auto started =
+    client.start_transport();
+
+if (started.is_err())
+{
+  client.close();
+  return 1;
+}
+
+client.put("message", "hello");
+
+client.tick();
+client.process_transport_events();
+
+client.stop_transport();
+client.close();
+```
+
 ## Summary
 
 Use the sync API when you need to inspect or manually advance synchronization work.
 
 ```txt
-put()          -> accepts local operation
-sync_state()   -> inspects sync counters
-tick()         -> advances sync once
-retry_expired() -> retries expired work
-prune_completed() -> prunes completed work
-prune_failed() -> prunes failed work
+put()                       -> accepts local operation
+sync_state()                -> inspects sync counters
+tick()                      -> advances sync once
+retry_expired()             -> retries expired work
+prune_completed()           -> prunes completed work
+prune_failed()              -> prunes failed work
+process_transport_events()  -> processes async transport events
 ```
 
 The sync layer makes local operations deliverable later.

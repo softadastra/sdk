@@ -77,6 +77,11 @@ namespace softadastra::sdk
     using PeersResult = Result<std::vector<Peer>, Error>;
 
     /**
+     * @brief Result returned by transport event processing.
+     */
+    using TransportEventsResult = Result<std::size_t, Error>;
+
+    /**
      * @brief Creates an implementation with default options.
      */
     ClientImpl();
@@ -271,6 +276,19 @@ namespace softadastra::sdk
      * @return true if running.
      */
     [[nodiscard]] bool transport_running() const noexcept;
+
+    /**
+     * @brief Processes queued async transport backend events.
+     *
+     * The async TCP transport backend produces TransportEvent objects.
+     * TransportEngine remains responsible for consuming those events, updating
+     * peer state, and dispatching inbound messages.
+     *
+     * @param max_events Maximum number of events to process.
+     * @return number of handled events on success, error on failure.
+     */
+    [[nodiscard]] TransportEventsResult process_transport_events(
+        std::size_t max_events = 64);
 
     /**
      * @brief Connects to a peer.

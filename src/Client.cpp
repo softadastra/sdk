@@ -14,6 +14,7 @@
  */
 
 #include <softadastra/sdk/Client.hpp>
+
 #include "ClientImpl.hpp"
 
 #include <utility>
@@ -38,9 +39,20 @@ namespace softadastra::sdk
 
   Client::~Client() = default;
 
-  Client::Client(Client &&) noexcept = default;
+  Client::Client(Client &&other) noexcept
+      : impl_(std::move(other.impl_))
+  {
+  }
 
-  Client &Client::operator=(Client &&) noexcept = default;
+  Client &Client::operator=(Client &&other) noexcept
+  {
+    if (this != &other)
+    {
+      impl_ = std::move(other.impl_);
+    }
+
+    return *this;
+  }
 
   Client::VoidResult Client::open()
   {
@@ -49,17 +61,20 @@ namespace softadastra::sdk
 
   void Client::close() noexcept
   {
-    impl_->close();
+    if (impl_)
+    {
+      impl_->close();
+    }
   }
 
   bool Client::is_open() const noexcept
   {
-    return impl_->is_open();
+    return impl_ && impl_->is_open();
   }
 
   bool Client::opened() const noexcept
   {
-    return impl_->opened();
+    return is_open();
   }
 
   Client::VoidResult Client::put(
@@ -111,12 +126,12 @@ namespace softadastra::sdk
 
   std::size_t Client::size() const noexcept
   {
-    return impl_->size();
+    return impl_ ? impl_->size() : 0U;
   }
 
   bool Client::empty() const noexcept
   {
-    return impl_->empty();
+    return size() == 0U;
   }
 
   Client::TickStateResult Client::tick(bool prune_completed)
@@ -157,6 +172,12 @@ namespace softadastra::sdk
   bool Client::transport_running() const noexcept
   {
     return impl_->transport_running();
+  }
+
+  Client::TransportEventsResult Client::process_transport_events(
+      std::size_t max_events)
+  {
+    return impl_->process_transport_events(max_events);
   }
 
   Client::VoidResult Client::connect(const Peer &peer)

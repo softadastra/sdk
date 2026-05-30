@@ -20,7 +20,7 @@
 #include <cstdint>
 #include <string>
 
-namespace softadastra::sdk
+    namespace softadastra::sdk
 {
   /**
    * @brief Public SDK client configuration.
@@ -37,6 +37,26 @@ namespace softadastra::sdk
   class ClientOptions
   {
   public:
+    /**
+     * @brief Public transport backend selection.
+     *
+     * TransportBackend describes which transport backend the SDK should use
+     * when transport support is enabled.
+     *
+     * The SDK currently exposes only AsyncTcp as the stable default because the
+     * Softadastra transport runtime is now powered by the async TCP backend.
+     *
+     * More backend values can be added later without changing the public
+     * ClientOptions shape.
+     */
+    enum class TransportBackend
+    {
+      /**
+       * @brief Async TCP backend powered by the Softadastra async transport.
+       */
+      AsyncTcp
+    };
+
     /**
      * @brief Creates default durable client options.
      */
@@ -182,6 +202,13 @@ namespace softadastra::sdk
     [[nodiscard]] bool transport_enabled() const noexcept;
 
     /**
+     * @brief Returns the selected transport backend.
+     *
+     * @return Transport backend selection.
+     */
+    [[nodiscard]] TransportBackend transport_backend() const noexcept;
+
+    /**
      * @brief Returns the transport bind host.
      *
      * @return Transport host.
@@ -294,6 +321,15 @@ namespace softadastra::sdk
     void set_auto_queue(bool value) noexcept;
 
     /**
+     * @brief Sets the transport backend.
+     *
+     * The current SDK default is TransportBackend::AsyncTcp.
+     *
+     * @param value Transport backend selection.
+     */
+    void set_transport_backend(TransportBackend value) noexcept;
+
+    /**
      * @brief Sets the transport configuration.
      *
      * This also enables transport support.
@@ -302,6 +338,20 @@ namespace softadastra::sdk
      * @param port Transport bind port.
      */
     void set_transport(std::string host, std::uint16_t port);
+
+    /**
+     * @brief Sets the transport configuration and backend.
+     *
+     * This also enables transport support.
+     *
+     * @param host Transport bind host.
+     * @param port Transport bind port.
+     * @param backend Transport backend selection.
+     */
+    void set_transport(
+        std::string host,
+        std::uint16_t port,
+        TransportBackend backend);
 
     /**
      * @brief Disables transport support.
@@ -336,6 +386,8 @@ namespace softadastra::sdk
     /**
      * @brief Returns a copy with transport enabled.
      *
+     * The returned copy uses the default async TCP transport backend.
+     *
      * @param host Transport bind host.
      * @param port Transport bind port.
      * @return Modified client options.
@@ -345,13 +397,39 @@ namespace softadastra::sdk
         std::uint16_t port) const;
 
     /**
+     * @brief Returns a copy with transport enabled and explicit backend.
+     *
+     * @param host Transport bind host.
+     * @param port Transport bind port.
+     * @param backend Transport backend selection.
+     * @return Modified client options.
+     */
+    [[nodiscard]] ClientOptions with_transport(
+        std::string host,
+        std::uint16_t port,
+        TransportBackend backend) const;
+
+    /**
      * @brief Returns a copy with localhost transport enabled.
+     *
+     * The returned copy uses the default async TCP transport backend.
      *
      * @param port Transport bind port.
      * @return Modified client options.
      */
     [[nodiscard]] ClientOptions with_local_transport(
         std::uint16_t port) const;
+
+    /**
+     * @brief Returns a copy with localhost transport enabled and explicit backend.
+     *
+     * @param port Transport bind port.
+     * @param backend Transport backend selection.
+     * @return Modified client options.
+     */
+    [[nodiscard]] ClientOptions with_local_transport(
+        std::uint16_t port,
+        TransportBackend backend) const;
 
     /**
      * @brief Returns a copy with discovery enabled.
@@ -412,6 +490,7 @@ namespace softadastra::sdk
     bool auto_queue_{true};
 
     bool transport_enabled_{false};
+    TransportBackend transport_backend_{TransportBackend::AsyncTcp};
     std::string transport_host_{"0.0.0.0"};
     std::uint16_t transport_port_{0};
 

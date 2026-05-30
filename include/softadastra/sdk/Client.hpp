@@ -44,13 +44,14 @@ namespace softadastra::sdk
    * - restart recovery
    * - sync state inspection
    * - manual sync ticks
-   * - optional transport
+   * - optional async transport
    * - optional discovery
    * - node metadata
    *
    * Internal Softadastra modules such as StoreEngine, SyncEngine,
-   * SyncScheduler, TransportEngine, DiscoveryService, and MetadataService are
-   * hidden behind the SDK implementation.
+   * SyncScheduler, TransportEngine, AsyncTcpTransportBackend,
+   * DiscoveryService, and MetadataService are hidden behind the SDK
+   * implementation.
    */
   class Client
   {
@@ -84,6 +85,11 @@ namespace softadastra::sdk
      * @brief Result returned by peer listing operations.
      */
     using PeersResult = Result<std::vector<Peer>, Error>;
+
+    /**
+     * @brief Result returned by async transport event processing.
+     */
+    using TransportEventsResult = Result<std::size_t, Error>;
 
     /**
      * @brief Creates a client with default options.
@@ -242,7 +248,8 @@ namespace softadastra::sdk
      * @brief Advances the sync pipeline once.
      *
      * This is deterministic and manual. It retries expired operations, collects
-     * a batch ready for transport, and optionally prunes completed entries.
+     * a batch ready for transport, optionally prunes completed entries, and
+     * processes queued async transport events when transport is enabled.
      *
      * @param prune_completed true to prune completed entries.
      * @return tick result on success, error on failure.
@@ -279,7 +286,7 @@ namespace softadastra::sdk
     [[nodiscard]] Result<std::size_t, Error> prune_failed();
 
     /**
-     * @brief Starts optional transport support.
+     * @brief Starts optional async transport support.
      *
      * Requires ClientOptions transport support to be enabled.
      *
@@ -298,6 +305,26 @@ namespace softadastra::sdk
      * @return true if transport is running.
      */
     [[nodiscard]] bool transport_running() const noexcept;
+
+    /**
+     * @brief Processes queued async transport backend events.
+     *
+     * The async TCP transport backend produces transport events. The SDK keeps
+     * those backend details hidden and exposes this method so applications can
+     * explicitly advance event processing when they run transport manually.
+     *
+     * This method is useful after:
+     * - start_transport()
+     * - connect()
+     * - disconnect()
+     * - tick()
+     * - any application-level wait or loop
+     *
+     * @param max_events Maximum number of backend events to process.
+     * @return number of handled events on success, error on failure.
+     */
+    [[nodiscard]] TransportEventsResult process_transport_events(
+        std::size_t max_events = 64);
 
     /**
      * @brief Connects to a peer through transport.
