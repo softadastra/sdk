@@ -57,8 +57,12 @@ jobs:
       - name: Fetch Softadastra umbrella
         shell: bash
         run: |
-          git clone --depth 1 --branch main --recurse-submodules https://github.com/softadastra/softadastra.git deps/softadastra
-          git -C deps/softadastra submodule update --init --recursive --depth 1 || true
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+
+          git clone --depth 1 --branch main https://github.com/softadastra/softadastra.git deps/softadastra
+
+          git -C deps/softadastra submodule sync --recursive
+          git -C deps/softadastra submodule update --init --recursive --depth 1
 
       - name: Fetch vix async dependency
         shell: bash
