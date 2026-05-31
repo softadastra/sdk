@@ -266,15 +266,31 @@ jobs:
           rm -rf dist/sdk-pkg
           mkdir -p dist/sdk-pkg
 
-          cp -R "$INSTALL_DIR/include" dist/sdk-pkg/include
-          cp -R "$INSTALL_DIR/lib" dist/sdk-pkg/lib
+          cp -R "$SOFTADASTRA_INSTALL_DIR/include" dist/sdk-pkg/include
+          cp -R "$SOFTADASTRA_INSTALL_DIR/lib" dist/sdk-pkg/lib
+
+          if [ -d "$SOFTADASTRA_INSTALL_DIR/share" ]; then
+            cp -R "$SOFTADASTRA_INSTALL_DIR/share" dist/sdk-pkg/share
+          fi
+
+          cp -R "$INSTALL_DIR/include/." dist/sdk-pkg/include/
+          cp -R "$INSTALL_DIR/lib/." dist/sdk-pkg/lib/
 
           if [ -d "$INSTALL_DIR/share" ]; then
-            cp -R "$INSTALL_DIR/share" dist/sdk-pkg/share
+            mkdir -p dist/sdk-pkg/share
+            cp -R "$INSTALL_DIR/share/." dist/sdk-pkg/share/
           fi
+
+          test -d dist/sdk-pkg/include/softadastra/sdk
+          test -f dist/sdk-pkg/lib/cmake/sdk-cpp/sdk-cppConfig.cmake
+          test -f dist/sdk-pkg/lib/cmake/softadastra/softadastraConfig.cmake
 
           cat > dist/sdk-pkg/README.txt <<'EOF'
           Softadastra C++ SDK
+
+          This package includes:
+            - sdk-cpp, the high-level C++ SDK
+            - Softadastra low-level runtime libraries required by sdk-cpp
 
           Use this SDK with CMake:
 
@@ -297,15 +313,45 @@ jobs:
 
           New-Item -ItemType Directory -Force -Path dist\sdk-pkg | Out-Null
 
-          Copy-Item "$env:INSTALL_DIR\include" dist\sdk-pkg\include -Recurse
-          Copy-Item "$env:INSTALL_DIR\lib" dist\sdk-pkg\lib -Recurse
+          Copy-Item "$env:SOFTADASTRA_INSTALL_DIR\include" dist\sdk-pkg\include -Recurse
+          Copy-Item "$env:SOFTADASTRA_INSTALL_DIR\lib" dist\sdk-pkg\lib -Recurse
+
+          if (Test-Path "$env:SOFTADASTRA_INSTALL_DIR\share") {
+            Copy-Item "$env:SOFTADASTRA_INSTALL_DIR\share" dist\sdk-pkg\share -Recurse
+          }
+
+          Copy-Item "$env:INSTALL_DIR\include\*" dist\sdk-pkg\include -Recurse -Force
+          Copy-Item "$env:INSTALL_DIR\lib\*" dist\sdk-pkg\lib -Recurse -Force
 
           if (Test-Path "$env:INSTALL_DIR\share") {
-            Copy-Item "$env:INSTALL_DIR\share" dist\sdk-pkg\share -Recurse
+            New-Item -ItemType Directory -Force -Path dist\sdk-pkg\share | Out-Null
+            Copy-Item "$env:INSTALL_DIR\share\*" dist\sdk-pkg\share -Recurse -Force
+          }
+
+          if (!(Test-Path "dist\sdk-pkg\include\softadastra\sdk")) {
+            Write-Host "include\softadastra\sdk not found"
+            Get-ChildItem -Recurse dist\sdk-pkg | Select-Object FullName
+            exit 1
+          }
+
+          if (!(Test-Path "dist\sdk-pkg\lib\cmake\sdk-cpp\sdk-cppConfig.cmake")) {
+            Write-Host "sdk-cppConfig.cmake not found"
+            Get-ChildItem -Recurse dist\sdk-pkg | Select-Object FullName
+            exit 1
+          }
+
+          if (!(Test-Path "dist\sdk-pkg\lib\cmake\softadastra\softadastraConfig.cmake")) {
+            Write-Host "softadastraConfig.cmake not found"
+            Get-ChildItem -Recurse dist\sdk-pkg | Select-Object FullName
+            exit 1
           }
 
           @"
           Softadastra C++ SDK
+
+          This package includes:
+            - sdk-cpp, the high-level C++ SDK
+            - Softadastra low-level runtime libraries required by sdk-cpp
 
           Use this SDK with CMake:
 
@@ -319,7 +365,6 @@ jobs:
           "@ | Out-File -FilePath dist\sdk-pkg\README.txt -Encoding utf8
 
           Compress-Archive -Path dist\sdk-pkg\* -DestinationPath "dist\${{ matrix.sdk_asset }}" -Force
-
       - name: Validate packaged SDK Unix
         if: runner.os != 'Windows'
         shell: bash
