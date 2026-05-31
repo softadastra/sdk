@@ -295,7 +295,8 @@ namespace softadastra::sdk
     if (options_.transport_enabled() &&
         runtime_.has_transport())
     {
-      runtime_.process_transport_events(64);
+      [[maybe_unused]] const auto processed =
+          runtime_.process_transport_events(64);
     }
 
     return TickStateResult::ok(
@@ -385,7 +386,9 @@ namespace softadastra::sdk
 
     if (runtime_.transport->is_running())
     {
-      runtime_.process_transport_events(64);
+      [[maybe_unused]] const auto processed =
+          runtime_.process_transport_events(64);
+
       return VoidResult::ok();
     }
 
@@ -396,7 +399,8 @@ namespace softadastra::sdk
               "failed to start transport"));
     }
 
-    runtime_.process_transport_events(64);
+    [[maybe_unused]] const auto processed =
+        runtime_.process_transport_events(64);
 
     return VoidResult::ok();
   }
@@ -413,7 +417,8 @@ namespace softadastra::sdk
       runtime_.async_transport_backend->shutdown();
     }
 
-    runtime_.process_transport_events(256);
+    [[maybe_unused]] const auto processed =
+        runtime_.process_transport_events(256);
   }
 
   bool ClientImpl::transport_running() const noexcept
@@ -464,7 +469,8 @@ namespace softadastra::sdk
     if (!runtime_.transport->connect_peer(
             internal::to_transport_peer(peer)))
     {
-      runtime_.process_transport_events(64);
+      [[maybe_unused]] const auto processed =
+          runtime_.process_transport_events(64);
 
       return VoidResult::err(
           internal::ErrorMapper::transport(
@@ -472,7 +478,8 @@ namespace softadastra::sdk
               peer.node_id()));
     }
 
-    runtime_.process_transport_events(64);
+    [[maybe_unused]] const auto processed =
+        runtime_.process_transport_events(64);
 
     return VoidResult::ok();
   }
@@ -500,7 +507,8 @@ namespace softadastra::sdk
     if (!runtime_.transport->disconnect_peer(
             internal::to_transport_peer(peer)))
     {
-      runtime_.process_transport_events(64);
+      [[maybe_unused]] const auto processed =
+          runtime_.process_transport_events(64);
 
       return VoidResult::err(
           internal::ErrorMapper::transport(
@@ -508,7 +516,8 @@ namespace softadastra::sdk
               peer.node_id()));
     }
 
-    runtime_.process_transport_events(64);
+    [[maybe_unused]] const auto processed =
+        runtime_.process_transport_events(64);
 
     return VoidResult::ok();
   }
