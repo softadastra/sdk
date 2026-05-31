@@ -522,8 +522,10 @@ jobs:
           cd dist
 
           if [ -z "${MINISIGN_PRIVATE_KEY_B64:-}" ]; then
-            echo "MINISIGN_PRIVATE_KEY_B64 is missing" >&2
-            exit 1
+            echo "MINISIGN_PRIVATE_KEY_B64 is not configured for this repository."
+            echo "Skipping minisign signatures for sdk release assets."
+            ls -lah
+            exit 0
           fi
 
           sudo apt-get update
