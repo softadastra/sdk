@@ -1,7 +1,7 @@
 {
   "name": "sdk",
   "namespace": "softadastra",
-  "version": "0.1.1",
+  "version": "0.3.0",
   "type": "library",
   "license": "Apache-2.0",
   "description": "Official C++ SDK for Softadastra, providing a small developer-facing API for local-first storage, sync, transport, discovery, and metadata.",

@@ -1,0 +1,566 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Optional tag to build/release, for example v0.3.0. If empty, uses the current ref."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.event.inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-release:
+    name: build SDK (${{ matrix.softadastraos }} / ${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            softadastraos: linux
+            arch: x86_64
+            sdk_asset: softadastra-sdk-linux-x86_64.tar.gz
+
+          - os: macos-14
+            softadastraos: macos
+            arch: aarch64
+            sdk_asset: softadastra-sdk-macos-aarch64.tar.gz
+
+          - os: windows-2022
+            softadastraos: windows
+            arch: x86_64
+            sdk_asset: softadastra-sdk-windows-x86_64.zip
+
+    env:
+      BUILD_DIR: build
+      INSTALL_DIR: install
+      SOFTADASTRA_INSTALL_DIR: deps/softadastra-install
+      ASYNC_INSTALL_DIR: deps/install
+
+    steps:
+      - name: Checkout sdk repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout tag
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag != '' }}
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          git fetch --tags --force
+          git checkout "tags/${{ github.event.inputs.tag }}"
+
+      - name: Setup CMake and Ninja
+        uses: lukka/get-cmake@latest
+
+      - name: Setup MSVC
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            ninja-build \
+            git \
+            curl \
+            ca-certificates \
+            libasio-dev \
+            tar \
+            zip \
+            unzip
+
+      - name: Clean build directories
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          rm -rf \
+            "$BUILD_DIR" \
+            "$INSTALL_DIR" \
+            "$SOFTADASTRA_INSTALL_DIR" \
+            "$ASYNC_INSTALL_DIR" \
+            deps/async \
+            deps/softadastra \
+            dist \
+            dist-all \
+            smoke-sdk \
+            consumer \
+            /tmp/asio.tar.gz \
+            /tmp/asio-asio-1-30-2
+
+      - name: Fetch Softadastra low-level repository
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+
+          git clone --depth 1 --branch main https://github.com/softadastra/softadastra.git deps/softadastra
+
+          git -C deps/softadastra submodule sync --recursive
+          git -C deps/softadastra submodule update --init --recursive --depth 1
+
+      - name: Fetch vix async dependency
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          git clone --depth 1 --branch dev --recurse-submodules https://github.com/vixcpp/async.git deps/async
+          git -C deps/async submodule update --init --recursive --depth 1 || true
+
+      - name: Prepare Asio for async
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ASIO_VERSION="asio-1-30-2"
+          ASIO_ARCHIVE="/tmp/asio.tar.gz"
+          ASIO_SRC="/tmp/asio-${ASIO_VERSION}"
+
+          rm -rf "${ASIO_ARCHIVE}" "${ASIO_SRC}"
+          mkdir -p deps/async/third_party/asio/include
+
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            cp -r /usr/include/asio* deps/async/third_party/asio/include/ || true
+          fi
+
+          if [ ! -f deps/async/third_party/asio/include/asio.hpp ]; then
+            curl -L --fail --retry 3 --retry-delay 2 \
+              -H "Accept: application/octet-stream" \
+              -o "${ASIO_ARCHIVE}" \
+              "https://codeload.github.com/chriskohlhoff/asio/tar.gz/refs/tags/${ASIO_VERSION}"
+
+            file "${ASIO_ARCHIVE}"
+            gzip -t "${ASIO_ARCHIVE}"
+
+            tar -xzf "${ASIO_ARCHIVE}" -C /tmp
+
+            test -d "${ASIO_SRC}/asio/include/asio"
+            test -f "${ASIO_SRC}/asio/include/asio.hpp"
+
+            cp -R "${ASIO_SRC}/asio/include/asio" \
+              deps/async/third_party/asio/include/
+
+            cp "${ASIO_SRC}/asio/include/asio.hpp" \
+              deps/async/third_party/asio/include/
+          fi
+
+          test -f deps/async/third_party/asio/include/asio.hpp
+
+      - name: Build and install vix async dependency
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          cmake -S deps/async -B deps/async/build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/${ASYNC_INSTALL_DIR}" \
+            -DVIX_ASYNC_BUILD_TESTS=OFF \
+            -DVIX_ASYNC_BUILD_EXAMPLES=OFF \
+            -DVIX_ENABLE_SANITIZERS=OFF
+
+          cmake --build deps/async/build --config Release -j2
+          cmake --install deps/async/build --config Release
+
+      - name: Build and install Softadastra low-level package
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          cmake -S deps/softadastra -B deps/softadastra/build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="${{ github.workspace }}/${ASYNC_INSTALL_DIR}" \
+            -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/${SOFTADASTRA_INSTALL_DIR}" \
+            -DSOFTADASTRA_BUILD_EXAMPLES=OFF \
+            -DSOFTADASTRA_BUILD_TESTS=OFF \
+            -DSOFTADASTRA_BUILD_CLI=ON \
+            -DSOFTADASTRA_BUILD_APPS=OFF \
+            -DSOFTADASTRA_BUILD_CLI_APP=OFF \
+            -DSOFTADASTRA_BUILD_NODE_APP=OFF \
+            -DSOFTADASTRA_INSTALL=ON \
+            -DSOFTADASTRA_WARNINGS_AS_ERRORS=ON
+
+          cmake --build deps/softadastra/build --config Release -j2
+          cmake --install deps/softadastra/build --config Release
+
+      - name: Configure sdk-cpp
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          cmake -S . -B "$BUILD_DIR" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="${{ github.workspace }}/${SOFTADASTRA_INSTALL_DIR};${{ github.workspace }}/${ASYNC_INSTALL_DIR}" \
+            -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/${INSTALL_DIR}" \
+            -DSDK_CPP_BUILD_TESTS=ON \
+            -DSDK_CPP_BUILD_EXAMPLES=ON \
+            -DSDK_CPP_INSTALL=ON \
+            -DSDK_CPP_WARNINGS_AS_ERRORS=ON
+
+      - name: Build sdk-cpp
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          cmake --build "$BUILD_DIR" --config Release -j2
+
+      - name: Run sdk-cpp tests
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          ctest --test-dir "$BUILD_DIR" --build-config Release --output-on-failure
+
+      - name: Install sdk-cpp
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          cmake --install "$BUILD_DIR" --config Release
+
+      - name: Validate installed SDK tree
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          test -d "$INSTALL_DIR/include/softadastra/sdk"
+          test -f "$INSTALL_DIR/include/softadastra/sdk/Client.hpp"
+          test -f "$INSTALL_DIR/include/softadastra/sdk/ClientOptions.hpp"
+
+          test -f "$INSTALL_DIR/lib/cmake/sdk-cpp/sdk-cppConfig.cmake"
+          test -f "$INSTALL_DIR/lib/cmake/sdk-cpp/sdk-cppConfigVersion.cmake"
+          test -f "$INSTALL_DIR/lib/cmake/sdk-cpp/sdk-cppTargets.cmake"
+
+          find "$INSTALL_DIR/include" -maxdepth 5 -type f | sort > installed-headers.txt
+          find "$INSTALL_DIR/lib/cmake" -maxdepth 5 -type f | sort > installed-cmake-files.txt
+
+          sed -n '1,120p' installed-headers.txt
+          cat installed-cmake-files.txt
+
+      - name: Package SDK Unix
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          rm -rf dist/sdk-pkg
+          mkdir -p dist/sdk-pkg
+
+          cp -R "$INSTALL_DIR/include" dist/sdk-pkg/include
+          cp -R "$INSTALL_DIR/lib" dist/sdk-pkg/lib
+
+          if [ -d "$INSTALL_DIR/share" ]; then
+            cp -R "$INSTALL_DIR/share" dist/sdk-pkg/share
+          fi
+
+          cat > dist/sdk-pkg/README.txt <<'EOF'
+          Softadastra C++ SDK
+
+          Use this SDK with CMake:
+
+            cmake -S . -B build -DCMAKE_PREFIX_PATH=/path/to/softadastra/sdk
+            cmake --build build
+
+          CMake:
+
+            find_package(sdk-cpp CONFIG REQUIRED)
+            target_link_libraries(app PRIVATE sdk-cpp::sdk-cpp)
+          EOF
+
+          tar -C dist/sdk-pkg -czf "dist/${{ matrix.sdk_asset }}" .
+
+      - name: Package SDK Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force dist\sdk-pkg -ErrorAction SilentlyContinue
+
+          New-Item -ItemType Directory -Force -Path dist\sdk-pkg | Out-Null
+
+          Copy-Item "$env:INSTALL_DIR\include" dist\sdk-pkg\include -Recurse
+          Copy-Item "$env:INSTALL_DIR\lib" dist\sdk-pkg\lib -Recurse
+
+          if (Test-Path "$env:INSTALL_DIR\share") {
+            Copy-Item "$env:INSTALL_DIR\share" dist\sdk-pkg\share -Recurse
+          }
+
+          @"
+          Softadastra C++ SDK
+
+          Use this SDK with CMake:
+
+            cmake -S . -B build -DCMAKE_PREFIX_PATH=C:\path\to\softadastra\sdk
+            cmake --build build
+
+          CMake:
+
+            find_package(sdk-cpp CONFIG REQUIRED)
+            target_link_libraries(app PRIVATE sdk-cpp::sdk-cpp)
+          "@ | Out-File -FilePath dist\sdk-pkg\README.txt -Encoding utf8
+
+          Compress-Archive -Path dist\sdk-pkg\* -DestinationPath "dist\${{ matrix.sdk_asset }}" -Force
+
+      - name: Validate packaged SDK Unix
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          rm -rf smoke-sdk consumer
+          mkdir -p smoke-sdk consumer
+
+          tar -xzf "dist/${{ matrix.sdk_asset }}" -C smoke-sdk
+
+          test -d smoke-sdk/include/softadastra/sdk
+          test -f smoke-sdk/include/softadastra/sdk/Client.hpp
+          test -f smoke-sdk/lib/cmake/sdk-cpp/sdk-cppConfig.cmake
+
+          cat > consumer/CMakeLists.txt <<'EOF'
+          cmake_minimum_required(VERSION 3.20)
+          project(sdk_cpp_consumer LANGUAGES CXX)
+
+          set(CMAKE_CXX_STANDARD 20)
+          set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+          find_package(sdk-cpp CONFIG REQUIRED)
+
+          add_executable(app main.cpp)
+          target_link_libraries(app PRIVATE sdk-cpp::sdk-cpp)
+          EOF
+
+          cat > consumer/main.cpp <<'EOF'
+          #include <softadastra/sdk/Client.hpp>
+          #include <softadastra/sdk/ClientOptions.hpp>
+
+          int main()
+          {
+            softadastra::sdk::Client client{
+                softadastra::sdk::ClientOptions::memory_only("release-sdk-node")};
+
+            const auto opened = client.open();
+
+            if (!opened.is_ok())
+            {
+              return 1;
+            }
+
+            return client.is_open() ? 0 : 1;
+          }
+          EOF
+
+          cmake -S consumer -B consumer/build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/smoke-sdk;${GITHUB_WORKSPACE}/${SOFTADASTRA_INSTALL_DIR};${GITHUB_WORKSPACE}/${ASYNC_INSTALL_DIR}"
+
+          cmake --build consumer/build --config Release -j2
+          ./consumer/build/app
+
+      - name: Validate packaged SDK Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force smoke-sdk, consumer -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path smoke-sdk | Out-Null
+          New-Item -ItemType Directory -Force -Path consumer | Out-Null
+
+          Expand-Archive -Path "dist\${{ matrix.sdk_asset }}" -DestinationPath smoke-sdk -Force
+
+          if (!(Test-Path "smoke-sdk\include\softadastra\sdk")) {
+            Write-Host "include\softadastra\sdk not found in SDK archive"
+            Get-ChildItem -Recurse smoke-sdk | Select-Object FullName
+            exit 1
+          }
+
+          if (!(Test-Path "smoke-sdk\lib\cmake\sdk-cpp\sdk-cppConfig.cmake")) {
+            Write-Host "sdk-cppConfig.cmake not found in SDK archive"
+            Get-ChildItem -Recurse smoke-sdk | Select-Object FullName
+            exit 1
+          }
+
+          @"
+          cmake_minimum_required(VERSION 3.20)
+          project(sdk_cpp_consumer LANGUAGES CXX)
+
+          set(CMAKE_CXX_STANDARD 20)
+          set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+          find_package(sdk-cpp CONFIG REQUIRED)
+
+          add_executable(app main.cpp)
+          target_link_libraries(app PRIVATE sdk-cpp::sdk-cpp)
+          "@ | Out-File -FilePath consumer\CMakeLists.txt -Encoding utf8
+
+          @"
+          #include <softadastra/sdk/Client.hpp>
+          #include <softadastra/sdk/ClientOptions.hpp>
+
+          int main()
+          {
+            softadastra::sdk::Client client{
+                softadastra::sdk::ClientOptions::memory_only("release-sdk-node")};
+
+            const auto opened = client.open();
+
+            if (!opened.is_ok())
+            {
+              return 1;
+            }
+
+            return client.is_open() ? 0 : 1;
+          }
+          "@ | Out-File -FilePath consumer\main.cpp -Encoding utf8
+
+          cmake -S consumer -B consumer\build -G Ninja `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_PREFIX_PATH="${{ github.workspace }}\smoke-sdk;${{ github.workspace }}\${{ env.SOFTADASTRA_INSTALL_DIR }};${{ github.workspace }}\${{ env.ASYNC_INSTALL_DIR }}"
+
+          cmake --build consumer\build --config Release -j2
+          .\consumer\build\app.exe
+
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.softadastraos }}-${{ matrix.arch }}
+          path: |
+            dist/${{ matrix.sdk_asset }}
+          if-no-files-found: error
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs-${{ matrix.softadastraos }}-${{ matrix.arch }}
+          path: |
+            ${{ env.BUILD_DIR }}/CMakeCache.txt
+            ${{ env.BUILD_DIR }}/CMakeFiles/CMakeOutput.log
+            ${{ env.BUILD_DIR }}/CMakeFiles/CMakeError.log
+            consumer/build/CMakeCache.txt
+            consumer/build/CMakeFiles/CMakeOutput.log
+            consumer/build/CMakeFiles/CMakeError.log
+            deps/softadastra/build/CMakeCache.txt
+            deps/softadastra/build/CMakeFiles/CMakeOutput.log
+            deps/softadastra/build/CMakeFiles/CMakeError.log
+          if-no-files-found: ignore
+
+  publish:
+    name: publish GitHub Release
+    needs: build-release
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist-all
+
+      - name: Flatten dist
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          mkdir -p dist
+
+          find dist-all -type f \( \
+            -name "softadastra-sdk-*.tar.gz" -o \
+            -name "softadastra-sdk-*.zip" \
+          \) -print0 |
+            while IFS= read -r -d '' f; do
+              base="$(basename "$f")"
+
+              if [ -f "dist/$base" ]; then
+                echo "Asset collision: $base" >&2
+                exit 1
+              fi
+
+              cp -f "$f" "dist/$base"
+            done
+
+          ls -lah dist
+          test "$(ls -A dist | wc -l)" -gt 0
+
+      - name: Generate sha256 files
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          cd dist
+
+          for f in softadastra-sdk-*; do
+            [ -f "$f" ] || continue
+            sha256sum "$f" > "$f.sha256"
+          done
+
+          ls -lah
+
+      - name: Sign release assets
+        shell: bash
+        env:
+          MINISIGN_PRIVATE_KEY_B64: ${{ secrets.MINISIGN_PRIVATE_KEY_B64 }}
+        run: |
+          set -euxo pipefail
+
+          cd dist
+
+          if [ -z "${MINISIGN_PRIVATE_KEY_B64:-}" ]; then
+            echo "MINISIGN_PRIVATE_KEY_B64 is missing" >&2
+            exit 1
+          fi
+
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends minisign
+
+          keyfile="$(mktemp)"
+          chmod 600 "$keyfile"
+
+          printf "%s" "$MINISIGN_PRIVATE_KEY_B64" | base64 -d > "$keyfile"
+          test -s "$keyfile"
+
+          for f in softadastra-sdk-*.tar.gz softadastra-sdk-*.zip; do
+            [ -f "$f" ] || continue
+            minisign -S -W -s "$keyfile" -m "$f"
+          done
+
+          rm -f "$keyfile"
+
+          ls -lah
+
+      - name: Determine tag
+        id: tag
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ github.event.inputs.tag }}" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release and upload assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
+          draft: false
+          prerelease: false
+          files: dist/*
