@@ -1,0 +1,213 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "dev"]
+  pull_request:
+    branches: ["main", "dev"]
+
+permissions:
+  contents: read
+
+jobs:
+  build-test-install:
+    name: ${{ matrix.os }} / ${{ matrix.build_type }} / tests=${{ matrix.tests }} / examples=${{ matrix.examples }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-2022]
+        build_type: [Debug, Release]
+        tests: [ON, OFF]
+        examples: [ON, OFF]
+
+    steps:
+      - name: Checkout sdk-cpp repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup CMake and Ninja
+        uses: lukka/get-cmake@latest
+
+      - name: Setup MSVC
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            ninja-build \
+            git \
+            curl \
+            ca-certificates \
+            libasio-dev
+
+      - name: Clean workspace
+        shell: bash
+        run: |
+          rm -rf build install deps softadastra-install smoke-sdk asio.tar.gz asio-asio-1-30-2
+
+      - name: Fetch Softadastra umbrella
+        shell: bash
+        run: |
+          git clone --depth 1 --branch main --recurse-submodules https://github.com/softadastra/softadastra.git deps/softadastra
+          git -C deps/softadastra submodule update --init --recursive --depth 1 || true
+
+      - name: Fetch vix async dependency
+        shell: bash
+        run: |
+          git clone --depth 1 --branch dev --recurse-submodules https://github.com/vixcpp/async.git deps/async
+          git -C deps/async submodule update --init --recursive --depth 1 || true
+
+      - name: Prepare Asio for async
+        shell: bash
+        run: |
+          mkdir -p deps/async/third_party/asio/include
+
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            cp -r /usr/include/asio* deps/async/third_party/asio/include/ || true
+          fi
+
+          if [ "${{ runner.os }}" = "macOS" ] || [ "${{ runner.os }}" = "Windows" ]; then
+            curl -L https://github.com/chriskohlhoff/asio/archive/refs/tags/asio-1-30-2.tar.gz -o asio.tar.gz
+            tar -xzf asio.tar.gz
+            cp -r asio-asio-1-30-2/asio/include/* deps/async/third_party/asio/include/
+          fi
+
+          test -f deps/async/third_party/asio/include/asio.hpp
+
+      - name: Build and install vix async dependency
+        shell: bash
+        run: |
+          cmake -S deps/async -B deps/async/build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/deps/install" \
+            -DVIX_ASYNC_BUILD_TESTS=OFF \
+            -DVIX_ASYNC_BUILD_EXAMPLES=OFF \
+            -DVIX_ENABLE_SANITIZERS=OFF
+
+          cmake --build deps/async/build --config ${{ matrix.build_type }} -j2
+          cmake --install deps/async/build --config ${{ matrix.build_type }}
+
+      - name: Build and install Softadastra
+        shell: bash
+        run: |
+          cmake -S deps/softadastra -B deps/softadastra/build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DCMAKE_PREFIX_PATH="${{ github.workspace }}/deps/install" \
+            -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/softadastra-install" \
+            -DSOFTADASTRA_BUILD_EXAMPLES=OFF \
+            -DSOFTADASTRA_BUILD_TESTS=OFF \
+            -DSOFTADASTRA_BUILD_CLI=ON \
+            -DSOFTADASTRA_BUILD_APPS=OFF \
+            -DSOFTADASTRA_BUILD_CLI_APP=OFF \
+            -DSOFTADASTRA_BUILD_NODE_APP=OFF \
+            -DSOFTADASTRA_INSTALL=ON \
+            -DSOFTADASTRA_WARNINGS_AS_ERRORS=ON
+
+          cmake --build deps/softadastra/build --config ${{ matrix.build_type }} -j2
+          cmake --install deps/softadastra/build --config ${{ matrix.build_type }}
+
+      - name: Configure sdk-cpp
+        shell: bash
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DCMAKE_PREFIX_PATH="${{ github.workspace }}/softadastra-install;${{ github.workspace }}/deps/install" \
+            -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/install" \
+            -DSDK_CPP_BUILD_TESTS=${{ matrix.tests }} \
+            -DSDK_CPP_BUILD_EXAMPLES=${{ matrix.examples }} \
+            -DSDK_CPP_INSTALL=ON \
+            -DSDK_CPP_WARNINGS_AS_ERRORS=ON
+
+      - name: Build sdk-cpp
+        shell: bash
+        run: |
+          cmake --build build --config ${{ matrix.build_type }} -j2
+
+      - name: Run tests
+        if: matrix.tests == 'ON'
+        shell: bash
+        run: |
+          ctest --test-dir build --build-config ${{ matrix.build_type }} --output-on-failure
+
+      - name: Install sdk-cpp
+        shell: bash
+        run: |
+          cmake --install build --config ${{ matrix.build_type }}
+
+      - name: Smoke test installed sdk-cpp package
+        shell: bash
+        run: |
+          rm -rf smoke-sdk
+          mkdir -p smoke-sdk
+
+          cat > smoke-sdk/CMakeLists.txt <<'EOF'
+          cmake_minimum_required(VERSION 3.20)
+          project(sdk_cpp_consumer LANGUAGES CXX)
+
+          set(CMAKE_CXX_STANDARD 20)
+          set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+          find_package(sdk-cpp CONFIG REQUIRED)
+
+          add_executable(app main.cpp)
+          target_link_libraries(app PRIVATE sdk-cpp::sdk-cpp)
+          EOF
+
+          cat > smoke-sdk/main.cpp <<'EOF'
+          #include <softadastra/sdk/Client.hpp>
+          #include <softadastra/sdk/ClientOptions.hpp>
+
+          int main()
+          {
+            softadastra::sdk::Client client{
+                softadastra::sdk::ClientOptions::memory_only("ci-sdk-node")};
+
+            const auto opened = client.open();
+
+            if (!opened.is_ok())
+            {
+              return 1;
+            }
+
+            return client.is_open() ? 0 : 1;
+          }
+          EOF
+
+          cmake -S smoke-sdk -B smoke-sdk/build -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} \
+            -DCMAKE_PREFIX_PATH="${{ github.workspace }}/install;${{ github.workspace }}/softadastra-install;${{ github.workspace }}/deps/install"
+
+          cmake --build smoke-sdk/build --config ${{ matrix.build_type }} -j2
+
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            ./smoke-sdk/build/app.exe
+          else
+            ./smoke-sdk/build/app
+          fi
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-cpp-logs-${{ matrix.os }}-${{ matrix.build_type }}-tests-${{ matrix.tests }}-examples-${{ matrix.examples }}
+          path: |
+            build/CMakeCache.txt
+            build/CMakeFiles/CMakeOutput.log
+            build/CMakeFiles/CMakeError.log
+            build/Testing/Temporary/LastTest.log
+            deps/softadastra/build/CMakeCache.txt
+            deps/softadastra/build/CMakeFiles/CMakeOutput.log
+            deps/softadastra/build/CMakeFiles/CMakeError.log
+            smoke-sdk/build/CMakeCache.txt
+            smoke-sdk/build/CMakeFiles/CMakeOutput.log
+            smoke-sdk/build/CMakeFiles/CMakeError.log
+          if-no-files-found: ignore
