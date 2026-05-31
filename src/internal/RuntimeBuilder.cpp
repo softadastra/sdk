@@ -142,6 +142,12 @@ namespace softadastra::sdk::internal
       Runtime &runtime,
       const ClientOptions &options)
   {
+    if (!options.transport_enabled() &&
+        !options.discovery_enabled())
+    {
+      return;
+    }
+
     build_async_runtime(runtime);
 
     runtime.transport_config =
@@ -169,10 +175,16 @@ namespace softadastra::sdk::internal
       break;
     }
   }
+
   void RuntimeBuilder::build_discovery(
       Runtime &runtime,
       const ClientOptions &options)
   {
+    if (!options.discovery_enabled())
+    {
+      return;
+    }
+
     if (!runtime.transport)
     {
       return;
@@ -209,14 +221,21 @@ namespace softadastra::sdk::internal
       Runtime &runtime,
       const ClientOptions &options)
   {
-    if (!runtime.discovery_engine)
+    if (runtime.discovery_engine)
     {
+      runtime.metadata =
+          std::make_unique<Runtime::MetadataService>(
+              to_metadata_options(options),
+              *runtime.discovery_engine);
+
+      runtime.metadata->start();
       return;
     }
 
     runtime.metadata =
         std::make_unique<Runtime::MetadataService>(
-            to_metadata_options(options),
-            *runtime.discovery_engine);
+            to_metadata_options(options));
+
+    runtime.metadata->start();
   }
 } // namespace softadastra::sdk::internal

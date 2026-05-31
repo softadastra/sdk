@@ -24,8 +24,18 @@ namespace softadastra::sdk::internal
     softadastra::discovery::DiscoveryOptions result;
 
     result.node_id = options.node_id();
+
     result.bind_host = options.discovery_host();
     result.bind_port = options.discovery_port();
+
+    result.broadcast_host = options.discovery_host();
+    result.broadcast_port = options.discovery_port();
+
+    result.announce_host = options.transport_host();
+    result.announce_port =
+        options.transport_port() != 0
+            ? options.transport_port()
+            : options.discovery_port();
 
     return result;
   }
